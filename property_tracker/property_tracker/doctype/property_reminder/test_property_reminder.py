@@ -129,3 +129,21 @@ class IntegrationTestReminderAlerts(IntegrationTestCase):
 	def test_rejects_non_https_endpoint(self):
 		with self.assertRaises(frappe.ValidationError):
 			api.save_push_subscription({"endpoint": "http://evil.example/x", "keys": {"p256dh": "a", "auth": "b"}})
+
+	def test_clear_done_and_delete(self):
+		mk = lambda t, done: frappe.get_doc({"doctype": "Property Reminder", "reminder": t, "due_on": add_to_date(now_datetime(), hours=1), "done": done}).insert()
+		a, b, c = mk("done one", 1), mk("done two", 1), mk("still open", 0)
+		frappe.get_doc({"doctype": "Notification Log", "for_user": "Administrator", "type": "Alert", "subject": "x", "document_type": "Property Reminder", "document_name": a.name}).insert(ignore_permissions=True)
+		self.assertEqual(api.clear_done_reminders(), {"deleted": 2})
+		self.assertFalse(frappe.db.exists("Property Reminder", a.name) or frappe.db.exists("Property Reminder", b.name))
+		self.assertFalse(frappe.db.exists("Notification Log", {"document_name": a.name}))
+		self.assertTrue(frappe.db.exists("Property Reminder", c.name))
+		self.assertEqual(api.delete_reminder(c.name), {"deleted": 1})
+		self.assertFalse(frappe.db.exists("Property Reminder", c.name))
+
+	def test_cannot_delete_someone_elses_reminder(self):
+		r = frappe.get_doc({"doctype": "Property Reminder", "reminder": "theirs", "due_on": now_datetime()}).insert()
+		frappe.db.set_value("Property Reminder", r.name, "owner", "Guest")
+		with self.assertRaises(frappe.PermissionError):
+			api.delete_reminder(r.name)
+

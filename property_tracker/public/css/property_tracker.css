@@ -277,3 +277,7 @@ td:first-child { color: var(--mut); font-weight: 600; white-space: nowrap; }
 .leaflet-tooltip.dist::before { display: none; }
 .leaflet-tooltip.dist.on { font-size: 13px; padding: 3px 10px; }
 .pdist { color: #2b7cff; margin: 2px 0; }
+.sechead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 22px 2px 8px; }
+.sechead h2 { margin: 0; }
+.iconbtn.sm { width: 34px; height: 34px; color: var(--mut); border-color: transparent; background: none; }
+.iconbtn.sm:hover { color: var(--danger); border-color: var(--line); }

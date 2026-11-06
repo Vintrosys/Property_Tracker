@@ -292,6 +292,32 @@ def set_reminder_done(name, done):
 	return reminder_to_client(doc)
 
 
+def _remove_reminders(names):
+	"""Delete reminders and their Desk bell notifications."""
+	for name in names:
+		frappe.db.delete("Notification Log", {"document_type": "Property Reminder", "document_name": name})
+		frappe.delete_doc("Property Reminder", name, ignore_permissions=True, force=True)
+	return len(names)
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_reminder(name):
+	"""Delete one of your own reminders."""
+	owner = frappe.db.get_value("Property Reminder", name, "owner")
+	if not owner:
+		return {"deleted": 0}
+	if owner != frappe.session.user:
+		frappe.throw(_("You can only delete your own reminders."), frappe.PermissionError)
+	return {"deleted": _remove_reminders([name])}
+
+
+@frappe.whitelist(methods=["POST"])
+def clear_done_reminders():
+	"""Delete all of your reminders that are marked done."""
+	names = frappe.get_all("Property Reminder", filters={"owner": frappe.session.user, "done": 1}, pluck="name")
+	return {"deleted": _remove_reminders(names)}
+
+
 # ---------------------------------------------------------------- import
 
 
