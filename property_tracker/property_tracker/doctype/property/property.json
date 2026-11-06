@@ -18,6 +18,9 @@
   "latitude",
   "column_break_loc",
   "longitude",
+  "section_boundary",
+  "boundary",
+  "boundary_area_sqft",
   "section_dimensions",
   "area",
   "area_unit",
@@ -31,6 +34,14 @@
   "owner_name",
   "column_break_owner",
   "phone",
+  "section_source",
+  "source",
+  "broker_name",
+  "column_break_broker",
+  "broker_phone",
+  "commission",
+  "section_team",
+  "assigned_to",
   "section_pricing",
   "expected_price",
   "price_unit",
@@ -39,10 +50,14 @@
   "total_price",
   "price_per_cent",
   "price_per_sqft",
+  "section_price_history",
+  "price_history",
   "section_notes",
   "notes",
   "section_photos",
   "photos",
+  "section_documents",
+  "documents",
   "section_visits",
   "visits",
   "section_history",
@@ -127,6 +142,25 @@
    "precision": "6"
   },
   {
+   "collapsible": 1,
+   "fieldname": "section_boundary",
+   "fieldtype": "Section Break",
+   "label": "Plot Boundary"
+  },
+  {
+   "fieldname": "boundary",
+   "fieldtype": "Geolocation",
+   "label": "Boundary"
+  },
+  {
+   "description": "Calculated from the boundary",
+   "fieldname": "boundary_area_sqft",
+   "fieldtype": "Float",
+   "label": "Measured Area (Sq.ft)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
    "fieldname": "section_dimensions",
    "fieldtype": "Section Break",
    "label": "Dimensions"
@@ -198,6 +232,52 @@
    "options": "Phone"
   },
   {
+   "fieldname": "section_source",
+   "fieldtype": "Section Break",
+   "label": "Source & Broker"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Source",
+   "options": "\nDirect Owner\nBroker\nOnline Listing\nReferral\nNewspaper / Board\nOther"
+  },
+  {
+   "fieldname": "broker_name",
+   "fieldtype": "Data",
+   "label": "Broker Name"
+  },
+  {
+   "fieldname": "column_break_broker",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "broker_phone",
+   "fieldtype": "Data",
+   "label": "Broker Phone",
+   "options": "Phone"
+  },
+  {
+   "description": "e.g. 2% or \u20b950,000",
+   "fieldname": "commission",
+   "fieldtype": "Data",
+   "label": "Commission"
+  },
+  {
+   "fieldname": "section_team",
+   "fieldtype": "Section Break",
+   "label": "Team"
+  },
+  {
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Assigned To",
+   "options": "User"
+  },
+  {
    "fieldname": "section_pricing",
    "fieldtype": "Section Break",
    "label": "Pricing"
@@ -248,6 +328,18 @@
    "read_only": 1
   },
   {
+   "collapsible": 1,
+   "fieldname": "section_price_history",
+   "fieldtype": "Section Break",
+   "label": "Price History"
+  },
+  {
+   "fieldname": "price_history",
+   "fieldtype": "Table",
+   "label": "Price History",
+   "options": "Property Price Log"
+  },
+  {
    "fieldname": "section_notes",
    "fieldtype": "Section Break",
    "label": "Notes"
@@ -267,6 +359,17 @@
    "fieldtype": "Table",
    "label": "Photos",
    "options": "Property Photo"
+  },
+  {
+   "fieldname": "section_documents",
+   "fieldtype": "Section Break",
+   "label": "Documents"
+  },
+  {
+   "fieldname": "documents",
+   "fieldtype": "Table",
+   "label": "Documents",
+   "options": "Property Document"
   },
   {
    "fieldname": "section_visits",
@@ -294,7 +397,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-06 12:00:00.000000",
+ "modified": "2026-11-07 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Property Tracker",
  "name": "Property",

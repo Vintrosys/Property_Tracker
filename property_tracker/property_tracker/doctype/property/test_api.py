@@ -94,3 +94,65 @@ class IntegrationTestPropertyAPI(IntegrationTestCase):
 		self.assertEqual(len(doc.photos), 1)
 		self.assertEqual(str(doc.creation)[:4], "2026")
 		self.assertEqual(frappe.db.get_value("Property Reminder", {"reminder": "Check EC"}, "property"), name)
+
+
+class IntegrationTestPropertyFeatures(IntegrationTestCase):
+	def new(self, **kw):
+		return api.save_property({"name": "Feature plot", **kw})
+
+	def test_boundary_area(self):
+		# ~100 m x 100 m square near Erode (0.0009 deg lat ~ 100 m; lng scaled by cos(lat))
+		import math
+
+		lat, lng = 11.13, 77.78
+		dlat, dlng = 0.000898315, 0.000898315 / math.cos(math.radians(lat))
+		ring = [[lng, lat], [lng + dlng, lat], [lng + dlng, lat + dlat], [lng, lat + dlat], [lng, lat]]
+		p = self.new(boundary={"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [ring]}}]})
+		self.assertAlmostEqual(p["barea"] / 107639, 1, delta=0.02)  # 1 hectare = 107,639 sq.ft
+		self.assertEqual(p["boundary"]["type"], "FeatureCollection")
+		with self.assertRaises(frappe.ValidationError):
+			self.new(boundary={"type": "Polygon", "coordinates": [[[1, 1], [2, 2]]]})
+
+	def test_asking_price_history_and_offers(self):
+		p = self.new(price="500000", punit="Total")
+		self.assertEqual([(x["kind"], x["amount"]) for x in p["prices"]], [("Asking", 500000)])
+		p = api.save_property({"price": "480000"}, name=p["id"])
+		self.assertEqual(p["prices"][-1]["amount"], 480000)
+		p = api.save_property({"notes": "no price change"}, name=p["id"])
+		self.assertEqual(len(p["prices"]), 2)
+		p = api.add_price(p["id"], "Offered", 400000, "first offer")
+		p = api.add_price(p["id"], "Negotiated", 450000)
+		self.assertEqual([x["kind"] for x in p["prices"]], ["Asking", "Asking", "Offered", "Negotiated"])
+		self.assertEqual(p["neg"], 450000)
+
+	def test_documents_checklist(self):
+		p = self.new()
+		p = api.set_document(p["id"], "Patta / Chitta", status="Received", note="copy")
+		p = api.set_document(p["id"], "Patta / Chitta", status="Verified")  # same type updates the row
+		self.assertEqual([(d["type"], d["status"], d["note"]) for d in p["docs"]], [("Patta / Chitta", "Verified", "copy")])
+		p = api.set_document(p["id"], "Other", note="survey report")
+		p = api.set_document(p["id"], "Other", note="bank letter")  # "Other" can repeat
+		self.assertEqual(len(p["docs"]), 3)
+		p = api.remove_document(p["id"], p["docs"][0]["i"])
+		self.assertEqual(len(p["docs"]), 2)
+
+	def test_source_broker_photo_caption(self):
+		p = self.new(source="Broker", broker="Ravi", bphone="+91 90000 00000", comm="2%", photos=[{"d": PNG, "c": "North side view"}])
+		self.assertEqual((p["source"], p["broker"], p["comm"]), ("Broker", "Ravi", "2%"))
+		self.assertEqual(p["photos"][0]["c"], "North side view")
+
+	def test_assign_and_mentions(self):
+		user = "pt-agent@example.com"
+		if not frappe.db.exists("User", user):
+			u = frappe.get_doc({"doctype": "User", "email": user, "first_name": "Agent", "send_welcome_email": 0}).insert(ignore_permissions=True)
+			u.add_roles("Property Manager")
+		p = self.new()
+		p = api.assign(p["id"], user)
+		self.assertEqual(p["assign"], user)
+		self.assertTrue(frappe.db.exists("Notification Log", {"for_user": user, "document_name": p["id"], "type": "Assignment"}))
+		self.assertIn(user, [t["user"] for t in api.get_team()])
+		comments = api.add_comment(p["id"], "Please visit tomorrow @Agent", [user])
+		self.assertIn('data-id="pt-agent@example.com"', comments[-1]["html"])
+		self.assertTrue(frappe.db.exists("Notification Log", {"for_user": user, "document_name": p["id"], "type": "Mention"}))
+		comments = api.delete_comment(p["id"], comments[-1]["k"])
+		self.assertEqual(comments, [])

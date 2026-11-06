@@ -38,6 +38,11 @@ FIELD_MAP = {
 	"notes": "notes",
 	"neg": "negotiated_price",
 	"rating": "rating",
+	"source": "source",
+	"broker": "broker_name",
+	"bphone": "broker_phone",
+	"comm": "commission",
+	"assign": "assigned_to",
 }
 NUMERIC = {"lat", "lng", "area", "len", "wid", "road", "price", "neg"}
 
@@ -78,12 +83,25 @@ def _blank_zero(value):
 	return value if value else ""
 
 
-def to_client(doc, photos=(), visits=(), history=()):
-	p = {"id": doc.name, "status": doc.status, "created": to_iso(doc.creation), "by": doc.owner}
+def to_client(doc, photos=(), visits=(), history=(), docs=(), prices=()):
+	p = {"id": doc.name, "status": doc.status, "created": to_iso(doc.creation), "by": doc.owner, "modified": to_iso(doc.modified)}
 	for key, field in FIELD_MAP.items():
 		value = doc.get(field)
 		p[key] = _blank_zero(value) if key in NUMERIC else (value or "")
-	p["photos"] = [{"d": r.image, "at": to_iso(r.taken_on)} for r in photos]
+	try:
+		p["boundary"] = json.loads(doc.boundary) if doc.boundary else None
+	except ValueError:
+		p["boundary"] = None
+	p["barea"] = flt(doc.boundary_area_sqft) or ""
+	p["photos"] = [{"d": r.image, "at": to_iso(r.taken_on), "c": r.caption or ""} for r in photos]
+	p["docs"] = [
+		{"i": r.idx, "type": r.doc_type, "status": r.status or "Pending", "file": r.file or "", "note": r.note or "", "at": to_iso(r.updated_on)}
+		for r in docs
+	]
+	p["prices"] = [
+		{"at": to_iso(r.logged_on), "kind": r.kind, "amount": flt(r.amount), "note": r.note or "", "by": r.logged_by or ""}
+		for r in prices
+	]
 	p["visits"] = [{"at": to_iso(r.visited_on), "note": r.note} for r in visits]
 	p["history"] = [
 		{"at": to_iso(r.changed_on), "from": r.from_status or "", "to": r.to_status, "note": r.note or ""}
@@ -93,7 +111,7 @@ def to_client(doc, photos=(), visits=(), history=()):
 
 
 def doc_to_client(doc):
-	return to_client(doc, doc.photos, doc.visits, doc.status_history)
+	return to_client(doc, doc.photos, doc.visits, doc.status_history, doc.documents, doc.price_history)
 
 
 def apply_client(doc, data):
@@ -106,6 +124,9 @@ def apply_client(doc, data):
 		elif key == "rating":
 			value = str(cint(value)) if cint(value) else ""
 		doc.set(field, value)
+	if "boundary" in data:
+		b = data.get("boundary")
+		doc.boundary = json.dumps(b) if isinstance(b, dict | list) else (b or None)
 
 
 def _save_photos(doc, photos):
@@ -130,7 +151,7 @@ def _save_photos(doc, photos):
 			src = file.file_url
 		elif not src:
 			continue
-		rows.append({"image": src, "taken_on": taken_on})
+		rows.append({"image": src, "taken_on": taken_on, "caption": (photo.get("c") or "")[:140]})
 		if i >= 49:
 			break
 	doc.set("photos", rows)
@@ -169,6 +190,8 @@ def get_data():
 	photos = children("Property Photo", "idx asc")
 	visits = children("Property Visit", "visited_on asc")
 	history = children("Property Status Log", "idx asc")
+	docs = children("Property Document", "idx asc")
+	prices = children("Property Price Log", "logged_on asc")
 
 	reminders = frappe.get_list(
 		"Property Reminder",
@@ -179,12 +202,38 @@ def get_data():
 	)
 	return {
 		"props": [
-			to_client(p, photos.get(p.name, ()), visits.get(p.name, ()), history.get(p.name, ())) for p in props
+			to_client(
+				p,
+				photos.get(p.name, ()),
+				visits.get(p.name, ()),
+				history.get(p.name, ()),
+				docs.get(p.name, ()),
+				prices.get(p.name, ()),
+			)
+			for p in props
 		],
 		"rem": [reminder_to_client(r) for r in reminders],
 		"user": frappe.session.user,
 		"me": get_profile(),
+		"team": get_team(),
 	}
+
+
+def get_team():
+	"""People who use the tracker: for assigning properties and @mentions."""
+	users = frappe.get_all(
+		"Has Role",
+		filters={"role": ("in", ["Property Manager", "System Manager"]), "parenttype": "User"},
+		pluck="parent",
+		distinct=True,
+	)
+	rows = frappe.get_all(
+		"User",
+		filters=[["name", "in", [u for u in users if u != "Guest"] or [""]], ["enabled", "=", 1], ["user_type", "=", "System User"]],
+		fields=["name", "full_name", "user_image"],
+		order_by="full_name asc",
+	)
+	return [{"user": r.name, "name": r.full_name or r.name, "image": r.user_image or ""} for r in rows]
 
 
 def get_profile():
@@ -205,6 +254,7 @@ def get_profile():
 		"member_since": to_iso(u.creation),
 		"added": frappe.db.count("Property", {"owner": user}),
 		"desk": frappe.db.get_value("User", user, "user_type") == "System User",
+		"phone": frappe.db.get_value("User", user, "mobile_no") or frappe.db.get_value("User", user, "phone") or "",
 	}
 
 
@@ -262,6 +312,133 @@ def update_deal(name, negotiated_price=None, rating=None):
 	apply_client(doc, {"neg": negotiated_price, "rating": rating})
 	doc.save()
 	return doc_to_client(doc)
+
+
+DOC_STATUSES = ("Pending", "Received", "Verified", "Issue")
+PRICE_KINDS = ("Asking", "Offered", "Counter", "Negotiated", "Final")
+
+
+@frappe.whitelist(methods=["POST"])
+def set_document(name, doc_type, status=None, note=None, file=None, row=None):
+	"""Add or update one entry of the document checklist (row = its idx when editing)."""
+	doc = _get(name)
+	if status and status not in DOC_STATUSES:
+		frappe.throw(_("Unknown document status"))
+	target = None
+	if row:
+		target = next((d for d in doc.documents if d.idx == cint(row)), None)
+	elif doc_type != "Other":
+		target = next((d for d in doc.documents if d.doc_type == doc_type), None)
+	if not target:
+		target = doc.append("documents", {"doc_type": doc_type})
+	target.doc_type = doc_type
+	if status:
+		target.status = status
+	if note is not None:
+		target.note = note
+	if file is not None:
+		target.file = file or None
+	target.updated_on = now_datetime()
+	doc.save()
+	return doc_to_client(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def remove_document(name, row):
+	doc = _get(name)
+	doc.set("documents", [d for d in doc.documents if d.idx != cint(row)])
+	doc.save()
+	return doc_to_client(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def add_price(name, kind, amount, note=None):
+	"""Price history entry; negotiated/final amounts also become the negotiated price."""
+	if kind not in PRICE_KINDS:
+		frappe.throw(_("Unknown price type"))
+	if flt(amount) <= 0:
+		frappe.throw(_("Enter an amount"))
+	doc = _get(name)
+	doc.append("price_history", {"logged_on": now_datetime(), "kind": kind, "amount": flt(amount), "note": note or "", "logged_by": frappe.session.user})
+	if kind in ("Negotiated", "Final"):
+		doc.negotiated_price = flt(amount)
+	doc.flags.skip_price_log = True
+	doc.save()
+	return doc_to_client(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def assign(name, user=None):
+	doc = _get(name)
+	if user and not frappe.db.exists("User", {"name": user, "enabled": 1}):
+		frappe.throw(_("Unknown user"))
+	doc.assigned_to = user or None
+	doc.save()
+	return doc_to_client(doc)
+
+
+@frappe.whitelist()
+def get_comments(name):
+	_get(name, "read")
+	rows = frappe.get_all(
+		"Comment",
+		filters={"reference_doctype": "Property", "reference_name": name, "comment_type": "Comment"},
+		fields=["name", "content", "owner", "creation"],
+		order_by="creation asc",
+	)
+	return [
+		{"k": r.name, "html": r.content, "by": r.owner, "who": frappe.utils.get_fullname(r.owner), "at": to_iso(r.creation)}
+		for r in rows
+	]
+
+
+@frappe.whitelist(methods=["POST"])
+def add_comment(name, text, mentions=None):
+	"""Comment on a property. @Name for users in `mentions` becomes a Frappe mention, which notifies them."""
+	from html import escape
+
+	doc = _get(name, "read")
+	text = (text or "").strip()
+	if not text:
+		frappe.throw(_("Write a comment"))
+	html = escape(text).replace("\n", "<br>")
+	mentioned = []
+	for user in _parse_list(mentions):
+		full = frappe.utils.get_fullname(user)
+		token = escape(f"@{full}")
+		if frappe.db.exists("User", {"name": user, "enabled": 1}) and token in html:
+			span = f'<span class="mention" data-id="{escape(user)}" data-value="{escape(full)}" data-denotation-char="@"><span>@{escape(full)}</span></span>'
+			html = html.replace(token, span, 1)
+			mentioned.append(user)
+	comment = doc.add_comment("Comment", f"<div>{html}</div>")
+	# Frappe notifies mentioned users in Desk; also push to their devices.
+	from property_tracker.webpush import send_to_user
+
+	for user in set(mentioned) - {frappe.session.user}:
+		try:
+			send_to_user(user, {"title": f"{frappe.utils.get_fullname(frappe.session.user)} mentioned you", "body": text[:200], "tag": f"{doc.name}-c", "url": f"/property-tracker#p/{doc.name}"})
+		except Exception:
+			frappe.log_error(title="Property Tracker mention push failed")
+	return get_comments(name)
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_comment(name, comment):
+	c = frappe.get_doc("Comment", comment)
+	if c.reference_doctype != "Property" or c.reference_name != name:
+		frappe.throw(_("Not a comment on this property"))
+	if c.owner != frappe.session.user and "System Manager" not in frappe.get_roles():
+		frappe.throw(_("You can only delete your own comments."), frappe.PermissionError)
+	c.delete(ignore_permissions=True)
+	return get_comments(name)
+
+
+def _parse_list(value):
+	if not value:
+		return []
+	if isinstance(value, str):
+		value = json.loads(value)
+	return list(value)
 
 
 # ---------------------------------------------------------------- reminders
