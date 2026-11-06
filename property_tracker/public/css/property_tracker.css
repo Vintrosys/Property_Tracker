@@ -332,3 +332,13 @@ b.mention { color: var(--ac); }
 #bmap { height: calc(100vh - 330px); min-height: 300px; z-index: 1; }
 .barea { margin-top: 10px; font-size: 15px; }
 .vtx { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #f5c518; color: #1b221f; font: 800 12px/1 system-ui, sans-serif; border: 2px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .4); }
+
+/* ---- offline ---- */
+.net { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); top: calc(8px + var(--safe-t)); max-width: min(92vw, 520px);
+	display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+	background: var(--ink); color: var(--bg); box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
+.net.off { background: #5f4b10; color: #fff; }
+.net.sync { background: #2b6cb0; color: #fff; }
+.net.err { background: var(--danger); color: #fff; }
+.net .linkchip { background: rgb(255 255 255 / .2); color: inherit; }
+.item.pend { border-style: dashed; border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); }

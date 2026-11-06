@@ -15,6 +15,7 @@
 	<link rel="stylesheet" href="/assets/property_tracker/css/property_tracker.css?v={{ build_version }}">
 	<script>
 		window.csrf_token = "{{ csrf_token }}";
+		window.pt_user = "{{ frappe.session.user }}";
 		try {
 			var t = localStorage.getItem("theme");
 			if (t && t !== "auto") document.documentElement.setAttribute("data-theme", t);
@@ -24,6 +25,7 @@
 </head>
 <body>
 	<div id="ld"></div>
+	<div id="net" class="net" hidden></div>
 	<div id="app"><main id="m"></main><nav id="nav"></nav></div>
 	<div id="sh"></div>
 	<div id="toast" class="toast" hidden></div>

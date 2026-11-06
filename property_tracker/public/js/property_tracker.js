@@ -7,18 +7,82 @@ const pill=s=>`<span class="pill" style="--c:${col(s)}">${SI[s]||"•"} ${s}</sp
 const U={"Sq.ft":1,Cent:435.6,Acre:43560,Ground:2400,"Sq.m":10.764};
 let db={props:[],rem:[]},view="home",flt="",q="",mq="",cmp=[],sync="Loading…",busy=0;
 // ---- Frappe API -------------------------------------------------------------
-async function api(m,args={}){busy++;loadBar();
- try{const r=await fetch("/api/method/property_tracker.api."+m,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json",Accept:"application/json","X-Frappe-CSRF-Token":window.csrf_token||""},body:JSON.stringify(args)});
+async function api(m,args={},quiet){busy++;loadBar();
+ try{let r;try{r=await fetch("/api/method/property_tracker.api."+m,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json",Accept:"application/json","X-Frappe-CSRF-Token":window.csrf_token||""},body:JSON.stringify(args)})}catch(e){throw offlineErr()}
+  if([0,502,503,504].includes(r.status))throw offlineErr();
+  if(typeof isOffline!="undefined"&&isOffline){isOffline=false;setTimeout(()=>{netBanner();flush()},0)}
   const j=await r.json().catch(()=>({}));if(r.status==401||(r.status==403&&(j.exc_type=="CSRFTokenError"||/(^|; )user_id=Guest/.test(document.cookie)))){location.reload();return new Promise(()=>{})}if(!r.ok)throw new Error(errMsg(j)||r.statusText||"Request failed");return j.message}
- catch(e){toast(e.message||"Request failed");throw e}finally{busy--;loadBar()}}
+ catch(e){if(e.offline){if(!isOffline){isOffline=true;netBanner()}}if(!quiet)toast(e.message||"Request failed");throw e}finally{busy--;loadBar()}}
 function errMsg(j){try{return JSON.parse(j._server_messages).map(m=>JSON.parse(m).message).join("\n").replace(/<[^>]+>/g,"")}catch(e){return j.exc_type||""}}
 function loadBar(){const e=document.getElementById("ld");if(e)e.className=busy?"loading":""}
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.hidden=false;clearTimeout(window.tt);window.tt=setTimeout(()=>e.hidden=true,4000)}
 function put(p){const i=db.props.findIndex(x=>x.id==p.id);if(i<0)db.props.push(p);else db.props[i]=p;return p}
-async function load(){try{const d=await api("get_data");db={props:d.props,rem:d.rem};prof=d.me||prof;team=d.team||team;sync="Synced at "+new Date().toLocaleTimeString([],{timeStyle:"short"})}catch(e){sync="Could not reach server"}
+let restored=false;
+async function load(fromFlush){if(!restored){restored=true;const at=await restoreLocal();if(at){sync="Saved copy";if(!st().s)render()}/* show the copy on the phone at once, then refresh */netBanner()}
+ if(!fromFlush&&outbox.length&&!isOffline){await flush();if(outbox.length)return finishLoad()}
+ try{const d=await api("get_data",{},true);db={props:d.props,rem:d.rem};prof=d.me||prof;team=d.team||team;sync="Synced at "+new Date().toLocaleTimeString([],{timeStyle:"short"});await saveLocal()}
+ catch(e){const s=await store.get(ukey("snap"));sync=e.offline?(s?`Offline · saved copy from ${new Date(s.at).toLocaleString([],{dateStyle:"medium",timeStyle:"short"})}`:"Offline"):"Could not reach server";if(!e.offline)toast(e.message)}
+ finishLoad()}
+function finishLoad(){
  const s=st().s;if(!s)render();else if(s.t=="d")redraw();
  if(startHash!==null){const h=startHash;startHash=null;route(h)}
- refreshAlerts()}
+ netBanner();refreshAlerts()}
+// ---- offline: keep a copy of the data on the phone and queue changes until online ----------
+// Snapshot of the last data + an outbox of pending writes, both in IndexedDB (per user).
+const store=(()=>{let dbp=null;const open=()=>dbp||(dbp=new Promise((res,rej)=>{const r=indexedDB.open("property-tracker",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
+ const run=(mode,fn)=>open().then(d=>new Promise((res,rej)=>{const t=d.transaction("kv",mode),q=fn(t.objectStore("kv"));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)}));
+ return {get:k=>run("readonly",s=>s.get(k)).catch(()=>undefined),set:(k,v)=>run("readwrite",s=>s.put(v,k)).catch(()=>{})}})();
+const ukey=k=>`${k}:${window.pt_user||"me"}`;
+let outbox=[],failedOps=[],syncing=false,isOffline=!navigator.onLine;
+const OFFLINE_OK=new Set(["save_property","log_visit","set_status","update_deal","add_price","add_reminder","set_reminder_done"]);
+const tmpId=()=>"L"+Date.now().toString(36).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();
+const isTmp=id=>typeof id=="string"&&/^L[0-9A-Z]{6,}$/.test(id);
+async function saveLocal(){await store.set(ukey("snap"),{props:db.props,rem:db.rem,me:prof,team,at:Date.now()});await store.set(ukey("outbox"),outbox);await store.set(ukey("failed"),failedOps)}
+async function restoreLocal(){const s=await store.get(ukey("snap"));outbox=(await store.get(ukey("outbox")))||[];failedOps=(await store.get(ukey("failed")))||[];
+ if(s){db={props:s.props||[],rem:s.rem||[]};prof=s.me||prof;team=s.team||team;return s.at}return 0}
+function netBanner(){const e=$("net");if(!e)return;const n=outbox.length,f=failedOps.length;
+ e.className="net"+(isOffline?" off":syncing?" sync":f?" err":"");e.hidden=!(isOffline||n||f);
+ e.innerHTML=isOffline?`${ic("info",15)} Offline${n?` · ${n} change${n>1?"s":""} saved on this phone`:" · showing saved data"}`:syncing?`${ic("refresh",15)} Uploading ${n} change${n>1?"s":""}…`:f?`${ic("info",15)} ${f} change${f>1?"s":""} couldn't upload <button class="linkchip" onclick="nav('more')">Review</button>`:n?`${ic("upload",15)} ${n} change${n>1?"s":""} waiting to upload`:""}
+// Apply a change to the local copy right away (so the app works offline). Returns the updated property.
+function applyLocal(m,a){const P2=id=>db.props.find(p=>p.id==id),now=new Date().toISOString();
+ if(m=="save_property"){const d={...a.data};let p=a.name?P2(a.name):null;const num=k=>d[k]!==undefined&&d[k]!==""&&d[k]!=null?+d[k]:"";
+  if(!p){p={id:a._tmp,_local:true,status:d.status||"Visited",created:now,by:prof.user,visits:[],history:[{at:now,from:"",to:d.status||"Visited",note:"Created"}],prices:[],docs:[],photos:[],boundary:null,barea:""};db.props.push(p)}
+  for(const k of Object.keys(d))if(k!="photos"&&k!="status")p[k]=["lat","lng","area","len","wid","road","price","neg"].includes(k)?num(k):d[k];
+  if(d.photos)p.photos=d.photos.map(x=>({d:x.d,at:x.at,c:x.c||""}));
+  if(!+p.area&&p.len&&p.wid)p.area=Math.round(p.len*p.wid/(U[p.unit]||1)*100)/100;
+  if(p.price&&!p.prices.some(x=>x.kind=="Asking"&&x.amount==Math.round(total(p))))p.prices.push({at:now,kind:"Asking",amount:Math.round(total(p)),note:"Asking price",by:prof.user});
+  p._pending=true;return p}
+ if(m=="log_visit"){const p=P2(a.name);p.visits.push({at:now,note:a.note});p._pending=true;return p}
+ if(m=="set_status"){const p=P2(a.name);p.history.push({at:now,from:p.status,to:a.status,note:a.note||""});p.status=a.status;p._pending=true;return p}
+ if(m=="update_deal"){const p=P2(a.name);if(a.rating!==undefined)p.rating=a.rating;p._pending=true;return p}
+ if(m=="add_price"){const p=P2(a.name);p.prices.push({at:now,kind:a.kind,amount:+a.amount,note:a.note||"",by:prof.user});if(a.kind=="Negotiated"||a.kind=="Final")p.neg=+a.amount;p._pending=true;return p}
+ if(m=="add_reminder"){const r={k:a._tmp,t:a.reminder,due:a.due_on,p:a.property||"",done:false,_local:true};db.rem.push(r);return r}
+ if(m=="set_reminder_done"){const r=db.rem.find(x=>x.k==a.name);r.done=!!+a.done;return r}}
+// Write through the server when online; otherwise (or if earlier changes are still queued) save locally and queue.
+async function write(m,args){if(!outbox.length&&!isOffline){try{return await api(m,args)}catch(e){if(!e.offline)throw e}}
+ if(!OFFLINE_OK.has(m))throw offlineErr();
+ const a={...args};if((m=="save_property"&&!a.name)||m=="add_reminder")a._tmp=tmpId();
+ // editing something that is itself still waiting to upload: fold the change into the queued create
+ const pend=m=="save_property"&&a.name&&outbox.find(o=>o.m=="save_property"&&o.a._tmp==a.name);
+ if(pend)pend.a.data={...pend.a.data,...a.data};else outbox.push({m,a,t:Date.now()});
+ const r=applyLocal(m,a);await saveLocal();netBanner();toast(isOffline?"Saved on this phone. It will upload when you're online.":"Saved. Uploading…");if(!isOffline)setTimeout(flush,300);return r}
+const offlineErr=()=>Object.assign(new Error("You're offline. This needs a connection."),{offline:true});
+async function flush(){if(syncing||!outbox.length||isOffline)return;syncing=true;netBanner();const ids={};let done=0;
+ const fix=a=>{for(const k of["name","property"])if(a[k]&&ids[a[k]])a[k]=ids[a[k]];return a};
+ try{while(outbox.length){const op=outbox[0],a=fix({...op.a});const tmp=a._tmp;delete a._tmp;
+   try{const r=await api(op.m,a,true);if(tmp)ids[tmp]=op.m=="add_reminder"?r.k:r.id;done++}
+   catch(e){if(e.offline){isOffline=true;break}failedOps.push({...op,err:e.message,at:Date.now()});toast(`Couldn't upload a change: ${e.message}`)}
+   outbox.shift();await saveLocal()}}
+ finally{syncing=false}
+ if(!outbox.length&&done){const cur=st().s;await load(true);if(cur&&ids[cur.id]){setState({...st(),s:{...cur,id:ids[cur.id]}},true);redraw()}toast(`${done} change${done>1?"s":""} uploaded`)}
+ netBanner()}
+window.addEventListener("online",()=>{isOffline=false;netBanner();flush().then(()=>{if(!outbox.length)load(true)})});
+window.addEventListener("offline",()=>{isOffline=true;netBanner()});
+setInterval(()=>{if(outbox.length&&!isOffline)flush()},30000);
+function failedCard(){if(!failedOps.length)return "";return `<h2>Changes that couldn't upload</h2><section class="card">${failedOps.map((f,i)=>`<div class="rem"><div style="flex:1;min-width:0"><div class="t">${esc(f.m.replace(/_/g," "))}${f.a.name?` · ${esc(f.a.name)}`:""}</div><div class="mut">${esc(f.err)}</div></div><button class="btn sm" onclick="retryFailed(${i})">Retry</button><button class="iconbtn sm" onclick="dropFailed(${i})" aria-label="Discard">${ic("trash",15)}</button></div>`).join("")}</section>`}
+async function retryFailed(i){const f=failedOps.splice(i,1)[0];outbox.push({m:f.m,a:f.a,t:Date.now()});await saveLocal();render();flush()}
+async function dropFailed(i){if(!confirm("Discard this change?"))return;failedOps.splice(i,1);await saveLocal();render();netBanner()}
+
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!document.getElementById("sh").innerHTML)load()});
 const $=id=>document.getElementById(id),P=id=>db.props.find(p=>p.id==id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -166,7 +230,7 @@ function home(){const t=new Date(),wk=new Date(Date.now()-6048e5),c=f=>db.props.
  <h2>By location</h2>${Object.keys(loc).length?`<div class="chips">${Object.entries(loc).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="chip">${ic("pin",14)} ${esc(k)} <small>${v}</small></span>`).join("")}</div>`:'<div class="card mut">No data yet</div>'}
  <h2>Recent visits</h2><div class="items">${db.props.slice(-6).reverse().map(item).join("")||`<div class="card empty">${ic("pin",32)}<div>Tap <b>Add property</b> at your first site.</div></div>`}</div>`}
 function item(p){const sub=[p.name?p.id:"",p.locality||p.type].filter(Boolean).map(esc).join(" · ");
- return `<div class="card item" onclick="detail('${p.id}')">${thumb(p)}<div class="it"><div class="t1">${esc(p.name||p.id)}</div><div class="t2">${pill(p.status)}<span class="mut ell">${sub}</span></div>${p.addr?`<div class="mut ell">${ic("pin",13)} ${esc(p.addr)}</div>`:""}<div class="t3"><b>${inr(total(p))}</b><span class="mut">${[areaTxt(p),dims(p),distTo(p)!=null?`${kmTxt(distTo(p))} away`:""].filter(Boolean).join(" · ")}</span></div></div></div>`}
+ return `<div class="card item${p._local||p._pending?" pend":""}" onclick="detail('${p.id}')">${thumb(p)}<div class="it"><div class="t1">${esc(p.name||p.id)}</div><div class="t2">${pill(p.status)}<span class="mut ell">${sub}</span></div>${p.addr?`<div class="mut ell">${ic("pin",13)} ${esc(p.addr)}</div>`:""}<div class="t3"><b>${inr(total(p))}</b><span class="mut">${[areaTxt(p),dims(p),distTo(p)!=null?`${kmTxt(distTo(p))} away`:""].filter(Boolean).join(" · ")}</span></div></div></div>`}
 let mine=false;const isMine=p=>p.assign?p.assign==prof.user:p.by==prof.user;
 const matchQ=(p,s)=>!s||JSON.stringify([p.id,p.name,p.locality,p.district,p.addr,p.owner,p.phone,p.type,p.broker,p.source]).toLowerCase().includes(s.toLowerCase());
 function listItems(){const r=db.props.filter(p=>(!flt||p.status==flt)&&(!mine||isMine(p))&&matchQ(p,q)).reverse();
@@ -362,8 +426,8 @@ async function delRem(k){const r=db.rem.find(x=>x.k==k);if(!r||!confirm(`Delete 
 async function clearDone(){const n=db.rem.filter(r=>r.done).length;if(!n||!confirm(`Clear ${n} done reminder${n>1?"s":""}? This can't be undone.`))return;
  const r=await api("clear_done_reminders");db.rem=db.rem.filter(x=>!x.done);render();toast(`Cleared ${r.deleted} done reminder${r.deleted==1?"":"s"}`)}
 async function addRem(){const t=$("rt").value.trim(),d=$("rd").value;if(!t||!d)return alert("Enter text and date");
- db.rem.push(await api("add_reminder",{reminder:t,due_on:new Date(d).toISOString(),property:$("rp").value}));render();syncAlarms();if((await alertsState().catch(()=>""))=="off")enableAlerts()}
-async function remDone(k,d){const r=await api("set_reminder_done",{name:k,done:d?1:0});db.rem=db.rem.map(x=>x.k==k?r:x);render();syncAlarms()}
+ const nr=await write("add_reminder",{reminder:t,due_on:new Date(d).toISOString(),property:$("rp").value});if(!db.rem.includes(nr))db.rem.push(nr);render();syncAlarms();if((await alertsState().catch(()=>""))=="off")enableAlerts()}
+async function remDone(k,d){const r=await write("set_reminder_done",{name:k,done:d?1:0});db.rem=db.rem.map(x=>x.k==k?r:x);render();syncAlarms()}
 const shown=new Set();
 setInterval(()=>{try{if(LN()||alertsOn||!("Notification" in window)||Notification.permission!="granted")return; // page-open fallback when push is off
  db.rem.filter(r=>!r.done&&!shown.has(r.k)&&new Date(r.due)<=new Date()&&new Date(r.due)>new Date(Date.now()-864e5)).forEach(r=>{shown.add(r.k);swReg().then(reg=>reg?reg.showNotification("⏰ Reminder",{body:r.t,tag:r.k,data:{url:remUrl(r)}}):new Notification("⏰ Reminder",{body:r.t,tag:r.k}))})}catch(e){}},30000);
@@ -388,7 +452,7 @@ function more(){const thm=getTheme(),p=prof,mine=db.props.filter(x=>x.by==p.user
  <div class="pstats"><div><b>${p.added??mine}</b><span>Added by you</span></div><div><b>${db.props.length}</b><span>All properties</span></div><div><b>${openRem}</b><span>Open reminders</span></div></div>
  <div class="mut" style="margin-top:12px">${p.last_login?`Last sign-in ${dt(p.last_login)}`:""}${p.member_since?` · Member since ${new Date(p.member_since).toLocaleDateString([],{month:"short",year:"numeric"})}`:""}</div>
  <div class="list" style="margin-top:8px">${p.desk?`<a href="/app/property">${ic("ext",18)} Open in Desk</a><a href="/app/user/${encodeURIComponent(p.user||"")}">${ic("gear",18)} Profile & password</a>`:`<a href="/update-password">${ic("gear",18)} Change password</a>`}<button class="d" onclick="logout()">${ic("logout",18)} Log out</button></div></section>
- ${installCard()}
+ ${failedCard()}${installCard()}
  <h2>Appearance</h2><div class="seg" role="group" aria-label="Theme"><button class="${thm=='light'?'on':''}" onclick="setTheme('light')">${ic("sun",16)} Light</button><button class="${thm=='dark'?'on':''}" onclick="setTheme('dark')">${ic("moon",16)} Dark</button><button class="${thm=='auto'?'on':''}" onclick="setTheme('auto')">${ic("monitor",16)} System</button></div>
  <h2>Data</h2><section class="card"><div class="mut">${ic("info",14)} ${esc(sync)}. Data is stored on your Frappe site and shared with your team.</div>
  <div class="list" style="margin-top:6px"><button onclick="load()">${ic("refresh",18)} Refresh</button><button onclick="csv()">${ic("download",18)} Export CSV (Excel)</button><button onclick="bak()">${ic("download",18)} Backup JSON</button><label>${ic("upload",18)} Import backup<input type="file" accept=".json" hidden onchange="rest(this)"></label></div></section>
@@ -440,11 +504,11 @@ function drawAdd(){draft={photos:[],lat:"",lng:""};
  sheet(sheetHead("Add property","GPS is captured automatically")+propForm()+`<div class="savebar"><button class="btn" onclick="closeS()">Cancel</button><button class="btn p" onclick="saveP()">Save property</button></div>`);drawPh();sizeHint();pickMap();gps()}
 function photos(i){[...i.files].forEach(f=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const s=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);draft.photos.push({d:c.toDataURL("image/jpeg",.6),at:f.lastModified?new Date(f.lastModified).toISOString():now()});URL.revokeObjectURL(u);drawPh()};im.src=u})}
 function llOk(){const f=formVals();if(!f.lat&&!f.lng)return true;if((+f.lat==0&&+f.lng==0)||hasLoc(f))return true;toast("Location is not valid: latitude must be −90…90 and longitude −180…180. Capture GPS or move the pin.");return false}
-async function saveP(){if(busy)return;stopGps();if(!llOk())return;put(await api("save_property",{data:{...formVals(),status:"Visited"}}));toast("Property saved");closeS()}
+async function saveP(){if(busy)return;stopGps();if(!llOk())return;put(await write("save_property",{data:{...formVals(),status:"Visited"}}));if(!outbox.length)toast("Property saved");closeS()}
 function editP(id){if(P(id))openS({t:"e",id})}
 function drawEdit(id){const p=P(id);if(!p)return;draft={photos:[...p.photos],lat:p.lat,lng:p.lng};
  sheet(sheetHead(`Edit ${p.id}`,esc(p.name||""))+propForm(p)+`<div class="savebar"><button class="btn" onclick="history.back()">Cancel</button><button class="btn p" onclick="saveEdit('${id}')">Save changes</button></div>`);drawPh();sizeHint();pickMap()}
-async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;put(await api("save_property",{name:id,data:formVals()}));toast("Changes saved");history.back()}
+async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;put(await write("save_property",{name:id,data:formVals()}));if(!outbox.length)toast("Changes saved");history.back()}
 function detail(id){if(P(id))openS({t:"d",id})}
 // ---- property page ------------------------------------------------------------------
 const DOC_TYPES=["EC (Encumbrance Certificate)","Patta / Chitta","FMB Sketch","Sale Deed","Parent Documents","Approval (DTCP / CMDA)","Tax Receipt","EB / Water"];
@@ -459,7 +523,7 @@ function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
  const act=(icn,l,on)=>`<button class="act" onclick="${on}">${ic(icn)}${l}</button>`;
  const docsDone=(p.docs||[]).filter(d=>d.status=="Verified"||d.status=="Received").length;
  sheet(sheetHead(`<span class="pid">${p.id}</span> ${esc(p.name||"")}`,esc([p.type,p.locality].filter(Boolean).join(" · ")),`<button class="iconbtn" onclick="editP('${id}')" aria-label="Edit">${ic("edit")}</button>`)
- +(p._local?`<div class="card pending">${ic("upload",16)} Saved on this phone. It will upload automatically when you're back online.</div>`:"")
+ +(p._local||p._pending?`<div class="card pending">${ic("upload",16)} ${p._local?"Saved on this phone.":"Changes saved on this phone."} ${isOffline?"They will upload when you're back online.":"Uploading…"}</div>`:"")
  +(ph.length?`<div class="gallery">${ph.map((x,i)=>`<figure class="${ph.length==1?"one":""}" onclick="viewPh('${id}',${i})"><img src="${esc(x.d)}" alt="${esc(x.c||"")}" loading="lazy">${x.c?`<figcaption>${esc(x.c)}</figcaption>`:""}</figure>`).join("")}</div>`:`<div class="hero-ph">${ic("image",40)}</div>`)
  +`<div class="meta">${pill(p.status)}<span class="mut">Added ${dt(p.created)}</span>${p.rating?`<span class="mut">· ${"★".repeat(p.rating)}</span>`:""}${p.assign?`<span class="chip sm">${ic("user",12)} ${esc(who(p.assign))}</span>`:""}</div>
  ${p.addr?`<div class="addr">${ic("pin",16)}<span>${esc(p.addr)}${p.locality?`, ${esc(p.locality)}`:""}${p.district?`, ${esc(p.district)}`:""}</span></div>`:""}
@@ -472,9 +536,9 @@ function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
  ${p.notes?`<h2>Notes</h2><div class="card" style="white-space:pre-wrap">${esc(p.notes)}</div>`:""}
  ${p._local?"":`<h2>Team</h2><section class="card"><label for="asg" style="margin-top:0">Assigned to</label><select id="asg" onchange="assignTo('${id}',this.value)"><option value="">— Not assigned —</option>${team.map(t=>`<option value="${esc(t.user)}" ${p.assign==t.user?"selected":""}>${esc(t.name)}${t.user==prof.user?" (you)":""}</option>`).join("")}</select></section>`}
  ${p._local?"":`<div class="sechead"><h2>Documents (${docsDone}/${DOC_TYPES.length})</h2></div><section class="card docs">${docRows(p)}</section>`}
- <div class="sechead"><h2>Price history</h2>${p._local?"":`<select id="rt2" class="mini" aria-label="Rating" onchange="deal('${id}')"><option value="">Rating —</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${p.rating==n?"selected":""}>${"★".repeat(n)}</option>`).join("")}</select>`}</div>
+ <div class="sechead"><h2>Price history</h2>${`<select id="rt2" class="mini" aria-label="Rating" onchange="deal('${id}')"><option value="">Rating —</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${p.rating==n?"selected":""}>${"★".repeat(n)}</option>`).join("")}</select>`}</div>
  <section class="card">${(p.prices||[]).length?`<ul class="tl prices">${[...p.prices].reverse().map(x=>`<li><time>${dt(x.at)}${x.by?` · ${esc(who(x.by))}`:""}</time><span class="kind k-${x.kind}">${x.kind}</span> <b>${inr(x.amount)}</b>${x.note?` <span class="mut">· ${esc(x.note)}</span>`:""}</li>`).join("")}</ul>`:`<div class="mut">No prices yet. The asking price is recorded automatically.</div>`}
- ${p._local?"":`<div class="row" style="margin-top:12px"><select id="pk" aria-label="Type">${opts(PRICE_KINDS,"Offered")}</select><input id="pa" type="number" inputmode="decimal" placeholder="Amount ₹"></div><div class="row" style="margin-top:8px"><input id="pn" placeholder="Note (optional)"><button class="btn p" style="flex:none" onclick="addPrice('${id}')">Add</button></div>`}</section>
+ ${`<div class="row" style="margin-top:12px"><select id="pk" aria-label="Type">${opts(PRICE_KINDS,"Offered")}</select><input id="pa" type="number" inputmode="decimal" placeholder="Amount ₹"></div><div class="row" style="margin-top:8px"><input id="pn" placeholder="Note (optional)"><button class="btn p" style="flex:none" onclick="addPrice('${id}')">Add</button></div>`}</section>
  <h2>Status</h2><section class="card"><div class="row"><select id="ns" aria-label="New status">${opts(ST,p.status)}</select><button class="btn p" style="flex:none" onclick="setS('${id}')">Update</button></div><input id="sn" placeholder="Note (optional)" style="margin-top:8px">
  <ul class="tl">${[...p.history].reverse().map(h=>`<li><time>${dt(h.at)}</time>${h.from?`${esc(h.from)} → `:""}<b>${esc(h.to)}</b>${h.note?` · ${esc(h.note)}`:""}</li>`).join("")}</ul></section>
  <h2>Visits (${p.visits.length})</h2><section class="card"><textarea id="vn" rows="2" placeholder="What was discussed, new price, follow-up…"></textarea><button class="btn" style="margin-top:8px" onclick="visit('${id}')">${ic("plus",16)} Log visit</button>
@@ -485,7 +549,7 @@ function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
 async function useMeasured(id){const p=P(id);if(!p||!p.barea)return;const u=p.unit||"Cent";const v=Math.round(p.barea/(U[u]||1)*100)/100;
  if(!confirm(`Set the area to ${fmt(v)} ${u} (measured from the boundary)?`))return;put(await api("save_property",{name:id,data:{area:v,unit:u}}));redraw()}
 async function assignTo(id,user){put(await api("assign",{name:id,user}));toast(user?`Assigned to ${who(user)}`:"Unassigned");redraw()}
-async function addPrice(id){const a=+$("pa").value;if(!a)return toast("Enter an amount");put(await api("add_price",{name:id,kind:$("pk").value,amount:a,note:$("pn").value.trim()}));redraw()}
+async function addPrice(id){const a=+$("pa").value;if(!a)return toast("Enter an amount");put(await write("add_price",{name:id,kind:$("pk").value,amount:a,note:$("pn").value.trim()}));redraw()}
 
 // documents checklist
 function docRows(p){const ds=p.docs||[],rows=DOC_TYPES.map(t=>({t,d:ds.find(x=>x.type==t)})).concat(ds.filter(x=>x.type=="Other").map(d=>({t:"Other",d})));
@@ -552,9 +616,9 @@ async function shareCard(id){const p=P(id);if(!p)return;toast("Preparing card…
  const text=`${p.name||p.id} · ${inr(total(p))}${hasLoc(p)?"\n"+gm(p):""}`;
  if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],text})}catch(e){}}
  else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=file.name;a.click();toast("Card saved as an image")}}
-async function setS(id){const p=P(id),to=$("ns").value;if(to!=p.status)put(await api("set_status",{name:id,status:to,note:$("sn").value}));redraw()}
-async function deal(id){put(await api("update_deal",{name:id,rating:$("rt2").value}));toast("Rating saved")}
+async function setS(id){const p=P(id),to=$("ns").value;if(to!=p.status)put(await write("set_status",{name:id,status:to,note:$("sn").value}));redraw()}
+async function deal(id){put(await write("update_deal",{name:id,rating:$("rt2").value}));if(!outbox.length)toast("Rating saved")}
 async function delP(id){if(!confirm(`Delete ${id}?`))return;await api("delete_property",{name:id});db.props=db.props.filter(x=>x.id!=id);db.rem.forEach(r=>{if(r.p==id)r.p=""});cmp=cmp.filter(x=>x!=id);closeS()}
-async function visit(id){const n=$("vn").value.trim();if(!n)return;put(await api("log_visit",{name:id,note:n}));redraw()}
+async function visit(id){const n=$("vn").value.trim();if(!n)return;put(await write("log_visit",{name:id,note:n}));redraw()}
 function share(id){const p=P(id),t=`${p.name?p.name+" ("+p.id+")":p.id} · ${p.type}${p.locality?" · "+p.locality:""}${p.addr?"\n"+p.addr:""}\n${[areaTxt(p),dims(p),p.road?"road "+fmt(p.road)+" ft":"",p.facing?p.facing+" facing":""].filter(Boolean).join(", ")||"—"}\nPrice ${inr(total(p))} · ${p.status}${p.lat?"\n"+gm(p):""}${p.notes?"\n"+p.notes:""}`;navigator.share?navigator.share({text:t}).catch(()=>{}):navigator.clipboard?.writeText(t).then(()=>toast("Summary copied (owner details excluded)"))}
 history.replaceState({v:"home",d:0},"",location.pathname);render();load();
