@@ -1,0 +1,23 @@
+{
+ "chart_name": "Site Visits per Week",
+ "chart_type": "Report",
+ "creation": "2026-11-07 12:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Dashboard Chart",
+ "dynamic_filters_json": "{}",
+ "filters_json": "{}",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "modified": "2026-11-07 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Property Tracker",
+ "name": "Site Visits per Week",
+ "owner": "Administrator",
+ "report_name": "Property Visits",
+ "roles": [],
+ "timeseries": 0,
+ "type": "Line",
+ "use_report_chart": 1,
+ "y_axis": []
+}
