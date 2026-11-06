@@ -49,7 +49,7 @@ pipeline with visit notes, reminders, a map and side-by-side comparison.
 
 ```bash
 cd ~/frappe-bench
-bench get-app https://github.com/kponsakthivel/Property-Tracker.git --branch main
+bench get-app https://github.com/Vintrosys/Property_Tracker.git --branch main
 bench --site <your-site> install-app property_tracker
 bench --site <your-site> enable-scheduler      # needed for reminder notifications
 bench build --app property_tracker
@@ -61,7 +61,7 @@ access too.
 
 ### On Frappe Cloud
 
-Add the app from GitHub (`kponsakthivel/Property-Tracker`, branch **`main`**) to a **Frappe v16**
+Add the app from GitHub (`Vintrosys/Property_Tracker`, branch **`main`**) to a **Frappe v16**
 bench, deploy, and install it on your site. The scheduler is on by default.
 
 ### Updating
