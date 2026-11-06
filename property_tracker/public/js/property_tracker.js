@@ -576,23 +576,20 @@ async function videoRemove(id,row){if(!confirm("Delete this video?"))return;put(
 // ---- What's new: shown once per phone after each update; Account → What's new reopens it -------
 // [icon, title, text, optional "Show me" action]
 const RELEASES=[
- {v:"1.2.0",date:"November 2026",title:"Videos and accurate GPS",items:[
-  ["video","Videos","Attach videos up to 20 MB next to photos, or on the property page. They play right in the app.","edit()"],
-  ["gps","Accurate GPS","The app waits for a real GPS fix, shows how accurate it is, and warns you before saving an approximate location. If your phone only gives an approximate location, it tells you which setting to turn on.",""],
-  ["pin","Place the pin yourself","Tap Place pin on map to put the location exactly on the plot using the satellite view.",""]]},
- {v:"1.1.0",date:"November 2026",title:"Work at the site",items:[
-  ["upload","Works offline","No signal at the site? Keep saving properties, photos, visits and reminders. Everything uploads by itself when you're back online.",""],
+ {v:"1.0.0",date:"November 2026",title:"Property Tracker v1.0",items:[
+  ["gps","Accurate GPS","Waits for a real GPS fix and shows how accurate it is. It warns before saving an approximate location and tells you which phone setting to turn on.",""],
+  ["pin","Place the pin yourself","Put the location exactly on the plot using the street, satellite or terrain map.",""],
   ["ruler","Plot boundary","Draw the plot on the satellite map, or walk the corners with GPS, and get the measured area in cents, sq.ft and acres.",""],
+  ["camera","Photos and videos","Photos and videos (up to 20 MB) with captions. Full-screen photo viewer, and videos play in the app.","edit()"],
+  ["upload","Works offline","No signal at the site? Keep saving properties, photos, visits and reminders. Everything uploads by itself when you're back online.",""],
   ["note","Documents checklist","Track EC, Patta / Chitta, FMB sketch, sale deed and approvals, each with a status and an attached photo or PDF.",""],
-  ["rupee","Price history","The asking price is recorded automatically, and you can add offers, counters and the final price.",""],
-  ["user","Team","Assign properties, filter to Mine, and comment with @mentions to notify colleagues.","nav('list')"],
-  ["image","Share card and brochure","Share a picture card on WhatsApp or print a brochure. Owner details are never included.",""],
-  ["bell","Reminder alarms","Alarms on the phone and push notifications when a reminder is due. Clear done reminders in one tap.","nav('rem')"],
-  ["map","Better maps","Satellite and terrain views, Street View links, your position and the distance to each property.","nav('map')"],
-  ["list","Reports","A Property Tracker workspace in Desk with charts and a weekly visits report.","window.open('/app/property-tracker','_blank')"]]},
- {v:"1.0.0",date:"November 2026",title:"Property Tracker on Frappe",items:[
-  ["home","Your data on the server","Properties, visits and reminders are saved on your Frappe site and shared with your team, not just on one phone.",""],
-  ["download","Install on your phone","Install it as an app from the browser, or use the Android app.","nav('more')"]]}];
+  ["rupee","Prices and history","Price per cent, sq.ft, acre or ground, with totals worked out for you. The asking price is recorded automatically, and you can add offers, counters and the final price.",""],
+  ["user","Team","Source and broker details, assigning properties, a Mine filter, and comments with @mentions to notify colleagues.","nav('list')"],
+  ["bell","Reminders","Alarms on the phone and push notifications when a reminder is due. Clear done reminders in one tap.","nav('rem')"],
+  ["map","Maps","Satellite and terrain views, plot outlines, Street View and directions, your position and the distance to each property.","nav('map')"],
+  ["image","Share and print","Share a picture card on WhatsApp or print a brochure. Owner details are never included. Compare properties and export to Excel.",""],
+  ["list","Reports","A Property Tracker workspace in Desk with charts and a weekly visits report.","window.open('/app/property-tracker','_blank')"],
+  ["download","On your phone","Install it as an app from the browser, or use the Android app. The phone's Back button works between screens.","nav('more')"]]}];
 const seenKey=()=>`pt_seen_version:${window.pt_user||""}`;
 function maybeWhatsNew(){const v=window.pt_version;if(!v||!RELEASES.some(r=>r.v==v))return;let seen=null;try{seen=localStorage.getItem(seenKey())}catch(e){}
  if(seen==v||st().s||startHash)return;try{localStorage.setItem(seenKey(),v)}catch(e){}openS({t:"w"})}

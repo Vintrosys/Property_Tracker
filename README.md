@@ -1,18 +1,23 @@
 # Property Tracker
 
 A [Frappe](https://frappeframework.com) app for tracking property and land site visits. Capture a
-site's GPS location, photos, owner details and price on your phone, then move it through your buying
-pipeline with visit notes, reminders, a map and side-by-side comparison.
+site's location, photos, videos, owner details and price on your phone, then follow it through your
+buying pipeline with visits, documents, prices, reminders, maps and reports. It works offline at the
+site and uploads when you're back online.
 
-- **Version:** 1.2.0
+- **Version:** 1.0.0 (see [Releases](https://github.com/Vintrosys/Property_Tracker/releases))
 - **Requires:** Frappe v16 (`>=16.0.0,<17.0.0`), Python 3.14
 - **License:** MIT
 
 ## Features
 
 **Recording a site**
-- GPS location captured automatically. The fix keeps improving until it's within about 15 m, shows live
-  accuracy, and you can fine-tune it by dragging a pin on the map.
+- **Accurate GPS:** the location is captured automatically. The app waits up to a minute for a real GPS
+  fix and shows its accuracy (green = good, amber = weak, red = approximate). It warns before saving an
+  approximate location, explains how to turn on the phone's precise location, and records how each
+  location was captured (GPS / map pin / typed).
+- **Place the pin yourself** on the street, satellite or terrain map to put the location exactly on the
+  plot.
 - Address / landmark, locality and district
 - Photos (resized on the phone before upload, stored as private files)
 - Length, width and road width in **feet**. If you leave Area empty, it's worked out from length × width
@@ -21,10 +26,11 @@ pipeline with visit notes, reminders, a map and side-by-side comparison.
   are calculated automatically.
 - Owner name and phone, with one-tap **Call** and **WhatsApp**
 - Source (direct owner, broker, online listing…) and broker name, phone and commission
-- Photo captions, and a full-screen photo viewer (swipe, double-tap to zoom)
-- **Videos** up to 20 MB each (record or pick on the phone), played right in the app, with captions.
-  Uploading needs a connection. Frappe's own upload limit (System Settings → Max File Size, 25 MB by
-  default) must be at least 20 MB, and on a production server so must nginx's `client_max_body_size`.
+- **Photos and videos** side by side in the form, with captions. Full-screen photo viewer (swipe,
+  double-tap to zoom). **Videos** up to 20 MB each (record or pick on the phone) upload after saving,
+  with progress, and play right in the app. Uploading videos needs a connection. Frappe's upload limit
+  (System Settings → Max File Size, 25 MB by default) must be at least 20 MB, and on a production
+  server so must nginx's `client_max_body_size`.
 - **Plot boundary:** tap the corners on the satellite map, or stand at each corner and add your GPS
   position. The measured area is shown in cent / sq.ft / acre / ground, and can be used as the area.
 - **Works offline:** save properties (with photos), visits, status changes, prices and reminders
@@ -59,8 +65,10 @@ pipeline with visit notes, reminders, a map and side-by-side comparison.
 
 **Everywhere**
 - Mobile-first design, light and dark themes, works on desktop too
-- Install it on a phone as a home-screen app (PWA) or as an Android APK
+- Install it on a phone as a home-screen app (PWA) or as an Android APK; the phone's Back button moves
+  between screens
 - Account page with your profile, roles and sign-out
+- **What's new** appears once after each update (and any time from **Account → What's new**)
 - All data is ordinary Frappe records, so it's also available in Desk, reports and the REST API
 
 ## Install
@@ -269,6 +277,17 @@ Roles: **Property Manager** (created on install) and **System Manager**.
 | Chrome says "This app cannot be installed" | Installing needs `https://` (or localhost). On a local `http://` address use the APK, or the Chrome flag above, or **Create shortcut** for now. **Account → Install app** explains the options. |
 | A new APK won't install over the old one | It's a debug build. Uninstall the old one, or set up the signing secrets so updates install over it |
 | Changes don't show on the phone | Run `bench build --app property_tracker`, then reopen the app twice (the installed app updates on the next launch) |
+
+## Releases
+
+Each version is published under [Releases](https://github.com/Vintrosys/Property_Tracker/releases)
+with its notes (and the Android APK when built). To publish a new version:
+
+1. Raise `__version__` in `property_tracker/__init__.py` (and `version` in `mobile/package.json`).
+2. Add the version's notes at the top of `RELEASES` in `property_tracker/public/js/property_tracker.js`,
+   which feeds the in-app **What's new** screen.
+3. Commit and push to `main`, build the APK (**Actions → Build APK**), then on GitHub use
+   **Releases → Draft a new release**, tag `vX.Y.Z` on `main`, paste the notes and attach the APK.
 
 ## Development
 
