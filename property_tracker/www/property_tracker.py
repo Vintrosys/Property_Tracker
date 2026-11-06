@@ -16,5 +16,6 @@ def get_context(context):
 
 	context.csrf_token = frappe.sessions.get_csrf_token()
 	context.build_version = asset_version()
+	context.app_version = frappe.get_attr("property_tracker.__version__")
 	context.no_breadcrumbs = True
 	return context

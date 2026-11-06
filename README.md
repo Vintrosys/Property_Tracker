@@ -4,7 +4,7 @@ A [Frappe](https://frappeframework.com) app for tracking property and land site 
 site's GPS location, photos, owner details and price on your phone, then move it through your buying
 pipeline with visit notes, reminders, a map and side-by-side comparison.
 
-- **Version:** 1.1.0
+- **Version:** 1.2.0
 - **Requires:** Frappe v16 (`>=16.0.0,<17.0.0`), Python 3.14
 - **License:** MIT
 

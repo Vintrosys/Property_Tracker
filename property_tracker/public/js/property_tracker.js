@@ -29,7 +29,7 @@ async function load(fromFlush){if(!restored){restored=true;const at=await restor
 function finishLoad(){
  const s=st().s;if(!s)render();else if(s.t=="d")redraw();
  if(startHash!==null){const h=startHash;startHash=null;route(h)}
- netBanner();refreshAlerts()}
+ netBanner();refreshAlerts();if(!window._wnChecked&&sync.startsWith("Synced")){window._wnChecked=1;setTimeout(maybeWhatsNew,400)}}
 // ---- offline: keep a copy of the data on the phone and queue changes until online ----------
 // Snapshot of the last data + an outbox of pending writes, both in IndexedDB (per user).
 const store=(()=>{let dbp=null;const open=()=>dbp||(dbp=new Promise((res,rej)=>{const r=indexedDB.open("property-tracker",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
@@ -138,7 +138,7 @@ const greet=()=>{const h=new Date().getHours();return h<12?"Good morning":h<17?"
 // state = {v: tab, f: status filter, s: open sheet {t:"d"|"e"|"a"|"c", id}, d: depth from Home}
 let startHash=location.hash;
 const st=()=>history.state||{v:"home",d:0};
-function urlFor(s){const x=s.s;if(x)return x.t=="v"?`#p/${x.id}/photos`:x.t=="b"?`#p/${x.id}/boundary`:x.t=="d"?`#p/${x.id}`:x.t=="e"?`#p/${x.id}/edit`:x.t=="a"?"#add":"#compare";return s.v=="home"?location.pathname:`#${s.v}`}
+function urlFor(s){const x=s.s;if(x)return x.t=="w"?"#whats-new":x.t=="v"?`#p/${x.id}/photos`:x.t=="b"?`#p/${x.id}/boundary`:x.t=="d"?`#p/${x.id}`:x.t=="e"?`#p/${x.id}/edit`:x.t=="a"?"#add":"#compare";return s.v=="home"?location.pathname:`#${s.v}`}
 function setState(s,replace){history[replace?"replaceState":"pushState"](s,"",urlFor(s))}
 // ---- location ------------------------------------------------------------------
 // Phones answer first with a rough network fix, then GPS improves it. Keep watching and
@@ -212,14 +212,14 @@ function nav(v,f=""){const s=st();view=v;flt=f;
  render()}
 function setF(f){flt=f;setState({...st(),f},true);render()}
 function openS(x){const s=st();setState({v:s.v,f:s.f,s:x,d:s.d+1});drawS(x)}
-function drawS(x){stopGps();dropSheetMaps();if(!x)return;if(x.t=="v")return drawViewer(x.id,x.i||0);if(x.t=="b")return drawBoundary(x.id);if(x.t=="d")drawDetail(x.id);else if(x.t=="e")drawEdit(x.id);else if(x.t=="a")drawAdd();else drawCompare()}
+function drawS(x){stopGps();dropSheetMaps();if(!x)return;if(x.t=="w")return drawWhatsNew();if(x.t=="v")return drawViewer(x.id,x.i||0);if(x.t=="b")return drawBoundary(x.id);if(x.t=="d")drawDetail(x.id);else if(x.t=="e")drawEdit(x.id);else if(x.t=="a")drawAdd();else drawCompare()}
 function redraw(){drawS(st().s)}
 function dropSheetMaps(){["ptMini","ptPick"].forEach(k=>{if(window[k]){window[k].remove();window[k]=null}})}
 function closeS(){if(st().s)history.back();else{$("sh").innerHTML="";render()}}
 function route(h){h=decodeURIComponent((h||"").replace(/^#/,""));let m;
  if(["list","map","rem","more"].includes(h))nav(h);
  else if((m=h.match(/^(?:p\/)?(P\d+)(\/edit|\/boundary)?$/))&&P(m[1])){openS({t:"d",id:m[1]});if(m[2]=="/edit")openS({t:"e",id:m[1]});else if(m[2])openS({t:"b",id:m[1]})}
- else if(h=="add")openS({t:"a"})}
+ else if(h=="add")openS({t:"a"});else if(h=="whats-new")openS({t:"w"})}
 window.addEventListener("popstate",e=>{
  if(!e.state&&location.hash){const h=location.hash;history.replaceState({v:"home",d:0},"",location.pathname);view="home";flt="";$("sh").innerHTML="";render();return route(h)} // link to #p/P0001 etc.
  const s=e.state||{v:"home",d:0},x=s.s;view=s.v||"home";flt=s.f||"";
@@ -473,7 +473,7 @@ function more(){const thm=getTheme(),p=prof,mine=db.props.filter(x=>x.by==p.user
  return head("Account")+`<section class="card"><div class="profile">${avatar(64)}<div style="min-width:0"><h3 class="ell">${esc(p.full_name||"…")}</h3><div class="mut ell">${esc(p.email||"")}</div><div class="roles">${(p.roles||[]).map(r=>`<span class="role">${esc(r)}</span>`).join("")}</div></div></div>
  <div class="pstats"><div><b>${p.added??mine}</b><span>Added by you</span></div><div><b>${db.props.length}</b><span>All properties</span></div><div><b>${openRem}</b><span>Open reminders</span></div></div>
  <div class="mut" style="margin-top:12px">${p.last_login?`Last sign-in ${dt(p.last_login)}`:""}${p.member_since?` · Member since ${new Date(p.member_since).toLocaleDateString([],{month:"short",year:"numeric"})}`:""}</div>
- <div class="list" style="margin-top:8px">${p.desk?`<a href="/app/property">${ic("ext",18)} Open in Desk</a><a href="/app/user/${encodeURIComponent(p.user||"")}">${ic("gear",18)} Profile & password</a>`:`<a href="/update-password">${ic("gear",18)} Change password</a>`}<button class="d" onclick="logout()">${ic("logout",18)} Log out</button></div></section>
+ <div class="list" style="margin-top:8px">${p.desk?`<a href="/app/property">${ic("ext",18)} Open in Desk</a><a href="/app/user/${encodeURIComponent(p.user||"")}">${ic("gear",18)} Profile & password</a>`:`<a href="/update-password">${ic("gear",18)} Change password</a>`}<button onclick="openS({t:'w'})">${ic("info",18)} What's new <span class="mut" style="margin-left:auto">v${esc(window.pt_version||"")}</span></button><button class="d" onclick="logout()">${ic("logout",18)} Log out</button></div></section>
  ${failedCard()}${installCard()}
  <h2>Appearance</h2><div class="seg" role="group" aria-label="Theme"><button class="${thm=='light'?'on':''}" onclick="setTheme('light')">${ic("sun",16)} Light</button><button class="${thm=='dark'?'on':''}" onclick="setTheme('dark')">${ic("moon",16)} Dark</button><button class="${thm=='auto'?'on':''}" onclick="setTheme('auto')">${ic("monitor",16)} System</button></div>
  <h2>Data</h2><section class="card"><div class="mut">${ic("info",14)} ${esc(sync)}. Data is stored on your Frappe site and shared with your team.</div>
@@ -573,6 +573,34 @@ async function videoAdd(id,input){const file=input.files[0];input.value="";if(!f
  catch(e){toast(e.message);if(box)box.hidden=true}}
 async function videoCaption(id,row,c){put(await api("update_video",{name:id,row,caption:c.trim()}));toast("Caption saved")}
 async function videoRemove(id,row){if(!confirm("Delete this video?"))return;put(await api("remove_video",{name:id,row}));redraw()}
+// ---- What's new: shown once per phone after each update; Account → What's new reopens it -------
+// [icon, title, text, optional "Show me" action]
+const RELEASES=[
+ {v:"1.2.0",date:"November 2026",title:"Videos and accurate GPS",items:[
+  ["video","Videos","Attach videos up to 20 MB next to photos, or on the property page. They play right in the app.","edit()"],
+  ["gps","Accurate GPS","The app waits for a real GPS fix, shows how accurate it is, and warns you before saving an approximate location. If your phone only gives an approximate location, it tells you which setting to turn on.",""],
+  ["pin","Place the pin yourself","Tap Place pin on map to put the location exactly on the plot using the satellite view.",""]]},
+ {v:"1.1.0",date:"November 2026",title:"Work at the site",items:[
+  ["upload","Works offline","No signal at the site? Keep saving properties, photos, visits and reminders. Everything uploads by itself when you're back online.",""],
+  ["ruler","Plot boundary","Draw the plot on the satellite map, or walk the corners with GPS, and get the measured area in cents, sq.ft and acres.",""],
+  ["note","Documents checklist","Track EC, Patta / Chitta, FMB sketch, sale deed and approvals, each with a status and an attached photo or PDF.",""],
+  ["rupee","Price history","The asking price is recorded automatically, and you can add offers, counters and the final price.",""],
+  ["user","Team","Assign properties, filter to Mine, and comment with @mentions to notify colleagues.","nav('list')"],
+  ["image","Share card and brochure","Share a picture card on WhatsApp or print a brochure. Owner details are never included.",""],
+  ["bell","Reminder alarms","Alarms on the phone and push notifications when a reminder is due. Clear done reminders in one tap.","nav('rem')"],
+  ["map","Better maps","Satellite and terrain views, Street View links, your position and the distance to each property.","nav('map')"],
+  ["list","Reports","A Property Tracker workspace in Desk with charts and a weekly visits report.","window.open('/app/property-tracker','_blank')"]]},
+ {v:"1.0.0",date:"November 2026",title:"Property Tracker on Frappe",items:[
+  ["home","Your data on the server","Properties, visits and reminders are saved on your Frappe site and shared with your team, not just on one phone.",""],
+  ["download","Install on your phone","Install it as an app from the browser, or use the Android app.","nav('more')"]]}];
+const seenKey=()=>`pt_seen_version:${window.pt_user||""}`;
+function maybeWhatsNew(){const v=window.pt_version;if(!v||!RELEASES.some(r=>r.v==v))return;let seen=null;try{seen=localStorage.getItem(seenKey())}catch(e){}
+ if(seen==v||st().s||startHash)return;try{localStorage.setItem(seenKey(),v)}catch(e){}openS({t:"w"})}
+function drawWhatsNew(){const cur=RELEASES.find(r=>r.v==window.pt_version)||RELEASES[0],older=RELEASES.filter(r=>r!==cur);
+ const card=([icn,t,txt,act])=>`<div class="wn"><span class="wni">${ic(icn,22)}</span><div><b>${t}</b><p>${txt}</p>${act?`<button class="linkchip" onclick="closeS();setTimeout(()=>{${act}},120)">Show me</button>`:""}</div></div>`;
+ sheet(sheetHead("What's new",`Version ${cur.v} · ${cur.date}`)+`<div class="wnhero">${ic("info",18)} <b>${cur.title}</b></div><section class="card">${cur.items.map(card).join("")}</section>
+ ${older.map(r=>`<details class="wnold"><summary>Version ${r.v} · ${r.title}</summary><section class="card">${r.items.map(card).join("")}</section></details>`).join("")}
+ <div class="savebar"><button class="btn p" onclick="closeS()">Got it</button></div>`)}
 // ---- property page ------------------------------------------------------------------
 const DOC_TYPES=["EC (Encumbrance Certificate)","Patta / Chitta","FMB Sketch","Sale Deed","Parent Documents","Approval (DTCP / CMDA)","Tax Receipt","EB / Water"];
 const DOC_COL={Pending:"#8a948f",Received:"#2b6cb0",Verified:"#1f7a4d",Issue:"#c0392b"};

@@ -16,6 +16,7 @@
 	<script>
 		window.csrf_token = "{{ csrf_token }}";
 		window.pt_user = "{{ frappe.session.user }}";
+		window.pt_version = "{{ app_version }}";
 		try {
 			var t = localStorage.getItem("theme");
 			if (t && t !== "auto") document.documentElement.setAttribute("data-theme", t);
