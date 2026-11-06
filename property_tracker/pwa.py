@@ -83,7 +83,10 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(req)
         .then((res) => {
-          if (res.ok && !res.redirected) caches.open(CACHE).then((c) => c.put(PAGE, res.clone()));
+          if (res.ok && !res.redirected) {
+            const copy = res.clone(); // clone now: the page starts reading the body as soon as we return it
+            caches.open(CACHE).then((c) => c.put(PAGE, copy));
+          }
           return res;
         })
         .catch(() => caches.match(PAGE).then((r) => r || new Response(OFFLINE, { headers: { "Content-Type": "text/html" } })))

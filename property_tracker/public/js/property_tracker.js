@@ -11,8 +11,11 @@ async function api(m,args={},quiet){busy++;loadBar();
  try{let r;try{r=await fetch("/api/method/property_tracker.api."+m,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json",Accept:"application/json","X-Frappe-CSRF-Token":window.csrf_token||""},body:JSON.stringify(args)})}catch(e){throw offlineErr()}
   if([0,502,503,504].includes(r.status))throw offlineErr();
   if(typeof isOffline!="undefined"&&isOffline){isOffline=false;setTimeout(()=>{netBanner();flush()},0)}
-  const j=await r.json().catch(()=>({}));if(r.status==401||(r.status==403&&(j.exc_type=="CSRFTokenError"||/(^|; )user_id=Guest/.test(document.cookie)))){location.reload();return new Promise(()=>{})}if(!r.ok)throw new Error(errMsg(j)||r.statusText||"Request failed");return j.message}
+  const j=await r.json().catch(()=>({}));if(r.status==401||(r.status==403&&(j.exc_type=="CSRFTokenError"||/(^|; )user_id=Guest/.test(document.cookie)))){location.reload();return new Promise(()=>{})}if(!r.ok)throw new Error(serverErr(r.status,j)||r.statusText||"Request failed");return j.message}
  catch(e){if(e.offline){if(!isOffline){isOffline=true;netBanner()}}if(!quiet)toast(e.message||"Request failed");throw e}finally{busy--;loadBar()}}
+// Readable message; a bare Python error right after an update almost always means the site wasn't migrated.
+function serverErr(status,j){const m=errMsg(j);if(j&&j._server_messages)return m;
+ if(status>=500||(status==404&&/DoesNotExist/.test(j&&j.exc_type||"")))return `Server error${j&&j.exc_type?` (${j.exc_type})`:""}. If the app was just updated, run "bench --site <site> migrate" on the server.`;return m}
 function errMsg(j){try{return JSON.parse(j._server_messages).map(m=>JSON.parse(m).message).join("\n").replace(/<[^>]+>/g,"")}catch(e){return j.exc_type||""}}
 function loadBar(){const e=document.getElementById("ld");if(e)e.className=busy?"loading":""}
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.hidden=false;clearTimeout(window.tt);window.tt=setTimeout(()=>e.hidden=true,4000)}
