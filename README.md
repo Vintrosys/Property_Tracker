@@ -49,7 +49,7 @@ pipeline with visit notes, reminders, a map and side-by-side comparison.
 
 ```bash
 cd ~/frappe-bench
-bench get-app https://github.com/kponsakthivel/Property-Tracker.git --branch develop
+bench get-app https://github.com/kponsakthivel/Property-Tracker.git --branch main
 bench --site <your-site> install-app property_tracker
 bench --site <your-site> enable-scheduler      # needed for reminder notifications
 bench build --app property_tracker
@@ -61,7 +61,7 @@ access too.
 
 ### On Frappe Cloud
 
-Add the app from GitHub (`kponsakthivel/Property-Tracker`, branch **`develop`**) to a **Frappe v16**
+Add the app from GitHub (`kponsakthivel/Property-Tracker`, branch **`main`**) to a **Frappe v16**
 bench, deploy, and install it on your site. The scheduler is on by default.
 
 ### Updating
@@ -198,7 +198,7 @@ Roles: **Property Manager** (created on install) and **System Manager**.
 | Problem | Fix |
 | --- | --- |
 | `bench build` fails in another app (for example helpdesk's posthog import) | Build only this app: `bench build --app property_tracker` |
-| Frappe Cloud: "Could not find a compatible Frappe version" | Use the `develop` branch on a Frappe v16 bench |
+| Frappe Cloud: "Could not find a compatible Frappe version" | Use the `main` branch on a Frappe v16 bench |
 | No reminder notifications | `bench --site <site> enable-scheduler`; turn alerts on under **Reminders** on that device; browsers need https |
 | GPS says the page is opened over http:// | Use https, localhost, the APK, or the Chrome flag above |
 | Chrome says "This app cannot be installed" | Installing needs `https://` (or localhost). On a local `http://` address use the APK, or the Chrome flag above, or **Create shortcut** for now. **Account → Install app** explains the options. |
