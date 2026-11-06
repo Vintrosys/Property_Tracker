@@ -309,7 +309,12 @@ def log_visit(name, note):
 @frappe.whitelist(methods=["POST"])
 def update_deal(name, negotiated_price=None, rating=None):
 	doc = _get(name)
-	apply_client(doc, {"neg": negotiated_price, "rating": rating})
+	changes = {}
+	if negotiated_price is not None:
+		changes["neg"] = negotiated_price
+	if rating is not None:
+		changes["rating"] = rating
+	apply_client(doc, changes)
 	doc.save()
 	return doc_to_client(doc)
 

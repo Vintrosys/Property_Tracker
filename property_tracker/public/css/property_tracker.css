@@ -281,3 +281,54 @@ td:first-child { color: var(--mut); font-weight: 600; white-space: nowrap; }
 .sechead h2 { margin: 0; }
 .iconbtn.sm { width: 34px; height: 34px; color: var(--mut); border-color: transparent; background: none; }
 .iconbtn.sm:hover { color: var(--danger); border-color: var(--line); }
+
+/* ---- gallery captions, viewer ---- */
+.gallery figure { margin: 0; position: relative; flex: none; scroll-snap-align: center; cursor: zoom-in; }
+.gallery figure img { display: block; }
+.gallery figure.one, .gallery figure.one img { width: 100%; }
+.gallery figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 12px 10px; border-radius: 0 0 var(--r) var(--r);
+	background: linear-gradient(transparent, rgb(0 0 0 / .65)); color: #fff; font-size: 13px; font-weight: 600; }
+.viewer { position: fixed; inset: 0; z-index: 40; background: #000; color: #fff; display: flex; flex-direction: column; }
+.vtop { display: flex; align-items: center; gap: 12px; padding: calc(10px + var(--safe-t)) 12px 10px; }
+.vtop .iconbtn { background: rgb(255 255 255 / .12); color: #fff; border: 0; }
+.vtrack { flex: 1; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.vtrack::-webkit-scrollbar { display: none; }
+.vslide { flex: none; width: 100%; height: 100%; scroll-snap-align: center; display: flex; flex-direction: column; }
+.vzoom { flex: 1; overflow: hidden; display: grid; place-items: center; }
+.vzoom img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.vzoom.zoomed { overflow: auto; display: block; }
+.vzoom.zoomed img { max-width: none; max-height: none; width: 250%; }
+.vcap { padding: 10px 16px calc(14px + var(--safe-b)); display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.vcap span { color: #bbb; font-size: 12px; }
+.phw { width: 96px; }
+.cap { margin-top: 6px; min-height: 32px; padding: 5px 8px; font-size: 12.5px; border-radius: 8px; }
+
+/* ---- detail extras ---- */
+.chip.sm { padding: 3px 9px; font-size: 12px; cursor: default; }
+.pending { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn) 10%, var(--card)); margin-bottom: 12px; font-size: 14px; }
+select.mini { width: auto; min-height: 34px; padding: 4px 8px; font-size: 13px; }
+.docrow { display: flex; align-items: center; gap: 6px; }
+.docrow + .docrow { border-top: 1px solid var(--line); }
+.docmain { flex: 1; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 11px 2px; text-align: left; cursor: pointer; color: var(--ink); min-width: 0; }
+.docmain .dot, .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); flex: none; }
+.docmain .dt { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dstat { font-size: 12.5px; font-weight: 700; }
+.docedit { background: var(--card2); border-radius: 12px; padding: 4px 12px 12px; margin: 4px 0 8px; }
+.docedit .seg button { font-size: 12.5px; }
+.kind { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--card2); border: 1px solid var(--line); }
+.kind.k-Asking { color: #2b6cb0; } .kind.k-Offered { color: #b7791f; } .kind.k-Counter { color: #805ad5; }
+.kind.k-Negotiated, .kind.k-Final { color: #1f7a4d; }
+.cmts { list-style: none; margin: 0 0 10px; padding: 0; }
+.cmts li { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.chead { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.chead time { color: var(--mut); font-size: 12px; flex: 1; }
+b.mention { color: var(--ac); }
+.cbox { position: relative; }
+.mlist { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; margin-top: -40px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.mlist button { display: block; width: 100%; text-align: left; padding: 10px 12px; border: 0; background: none; cursor: pointer; color: var(--ink); font-weight: 600; }
+.mlist button + button { border-top: 1px solid var(--line); }
+
+/* ---- boundary ---- */
+#bmap { height: calc(100vh - 330px); min-height: 300px; z-index: 1; }
+.barea { margin-top: 10px; font-size: 15px; }
+.vtx { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #f5c518; color: #1b221f; font: 800 12px/1 system-ui, sans-serif; border: 2px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .4); }

@@ -11,7 +11,7 @@
 	<meta name="apple-mobile-web-app-capable" content="yes">
 	<meta name="apple-mobile-web-app-title" content="Properties">
 	<link rel="apple-touch-icon" href="/assets/property_tracker/images/apple-touch-icon.png">
-	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+	<link rel="stylesheet" href="/assets/property_tracker/lib/leaflet/leaflet.css">
 	<link rel="stylesheet" href="/assets/property_tracker/css/property_tracker.css?v={{ build_version }}">
 	<script>
 		window.csrf_token = "{{ csrf_token }}";
@@ -20,7 +20,7 @@
 			if (t && t !== "auto") document.documentElement.setAttribute("data-theme", t);
 		} catch (e) {}
 	</script>
-	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+	<script src="/assets/property_tracker/lib/leaflet/leaflet.js"></script>
 </head>
 <body>
 	<div id="ld"></div>

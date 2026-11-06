@@ -54,8 +54,8 @@ const SHELL = [
   "/assets/property_tracker/css/property_tracker.css?v=__VERSION__",
   "/assets/property_tracker/js/property_tracker.js?v=__VERSION__",
   "/assets/property_tracker/images/logo.svg",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+  "/assets/property_tracker/lib/leaflet/leaflet.css",
+  "/assets/property_tracker/lib/leaflet/leaflet.js",
 ];
 const OFFLINE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title>
 <style>body{font:16px system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f5f2;color:#1d2320;text-align:center;padding:24px}button{background:#1f6f50;color:#fff;border:0;border-radius:10px;padding:12px 20px;font:inherit}</style></head>
@@ -92,7 +92,7 @@ self.addEventListener("fetch", (e) => {
   }
 
   // Static app assets and Leaflet: serve from cache, refresh in the background.
-  const isShell = url.pathname.startsWith("/assets/property_tracker/") || url.href.startsWith("https://unpkg.com/leaflet@1.9.4/");
+  const isShell = url.pathname.startsWith("/assets/property_tracker/");
   if (isShell) {
     e.respondWith(
       caches.open(CACHE).then((c) =>

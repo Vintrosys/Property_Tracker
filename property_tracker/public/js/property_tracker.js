@@ -15,7 +15,7 @@ function errMsg(j){try{return JSON.parse(j._server_messages).map(m=>JSON.parse(m
 function loadBar(){const e=document.getElementById("ld");if(e)e.className=busy?"loading":""}
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.hidden=false;clearTimeout(window.tt);window.tt=setTimeout(()=>e.hidden=true,4000)}
 function put(p){const i=db.props.findIndex(x=>x.id==p.id);if(i<0)db.props.push(p);else db.props[i]=p;return p}
-async function load(){try{const d=await api("get_data");db={props:d.props,rem:d.rem};prof=d.me||prof;sync="Synced at "+new Date().toLocaleTimeString([],{timeStyle:"short"})}catch(e){sync="Could not reach server"}
+async function load(){try{const d=await api("get_data");db={props:d.props,rem:d.rem};prof=d.me||prof;team=d.team||team;sync="Synced at "+new Date().toLocaleTimeString([],{timeStyle:"short"})}catch(e){sync="Could not reach server"}
  const s=st().s;if(!s)render();else if(s.t=="d")redraw();
  if(startHash!==null){const h=startHash;startHash=null;route(h)}
  refreshAlerts()}
@@ -71,7 +71,7 @@ const greet=()=>{const h=new Date().getHours();return h<12?"Good morning":h<17?"
 // state = {v: tab, f: status filter, s: open sheet {t:"d"|"e"|"a"|"c", id}, d: depth from Home}
 let startHash=location.hash;
 const st=()=>history.state||{v:"home",d:0};
-function urlFor(s){const x=s.s;if(x)return x.t=="d"?`#p/${x.id}`:x.t=="e"?`#p/${x.id}/edit`:x.t=="a"?"#add":"#compare";return s.v=="home"?location.pathname:`#${s.v}`}
+function urlFor(s){const x=s.s;if(x)return x.t=="v"?`#p/${x.id}/photos`:x.t=="b"?`#p/${x.id}/boundary`:x.t=="d"?`#p/${x.id}`:x.t=="e"?`#p/${x.id}/edit`:x.t=="a"?"#add":"#compare";return s.v=="home"?location.pathname:`#${s.v}`}
 function setState(s,replace){history[replace?"replaceState":"pushState"](s,"",urlFor(s))}
 // ---- location ------------------------------------------------------------------
 // Phones answer first with a rough network fix, then GPS improves it. Keep watching and
@@ -128,18 +128,18 @@ function nav(v,f=""){const s=st();view=v;flt=f;
  render()}
 function setF(f){flt=f;setState({...st(),f},true);render()}
 function openS(x){const s=st();setState({v:s.v,f:s.f,s:x,d:s.d+1});drawS(x)}
-function drawS(x){stopGps();dropSheetMaps();if(!x)return;if(x.t=="d")drawDetail(x.id);else if(x.t=="e")drawEdit(x.id);else if(x.t=="a")drawAdd();else drawCompare()}
+function drawS(x){stopGps();dropSheetMaps();if(!x)return;if(x.t=="v")return drawViewer(x.id,x.i||0);if(x.t=="b")return drawBoundary(x.id);if(x.t=="d")drawDetail(x.id);else if(x.t=="e")drawEdit(x.id);else if(x.t=="a")drawAdd();else drawCompare()}
 function redraw(){drawS(st().s)}
 function dropSheetMaps(){["ptMini","ptPick"].forEach(k=>{if(window[k]){window[k].remove();window[k]=null}})}
 function closeS(){if(st().s)history.back();else{$("sh").innerHTML="";render()}}
 function route(h){h=decodeURIComponent((h||"").replace(/^#/,""));let m;
  if(["list","map","rem","more"].includes(h))nav(h);
- else if((m=h.match(/^(?:p\/)?(P\d+)(\/edit)?$/))&&P(m[1])){openS({t:"d",id:m[1]});if(m[2])openS({t:"e",id:m[1]})}
+ else if((m=h.match(/^(?:p\/)?(P\d+)(\/edit|\/boundary)?$/))&&P(m[1])){openS({t:"d",id:m[1]});if(m[2]=="/edit")openS({t:"e",id:m[1]});else if(m[2])openS({t:"b",id:m[1]})}
  else if(h=="add")openS({t:"a"})}
 window.addEventListener("popstate",e=>{
  if(!e.state&&location.hash){const h=location.hash;history.replaceState({v:"home",d:0},"",location.pathname);view="home";flt="";$("sh").innerHTML="";render();return route(h)} // link to #p/P0001 etc.
  const s=e.state||{v:"home",d:0},x=s.s;view=s.v||"home";flt=s.f||"";
- if(x&&(x.t=="d"||x.t=="e")&&!P(x.id))return history.back(); // property was deleted
+ if(x&&x.id&&!P(x.id))return history.back(); // property was deleted
  if(x&&x.t=="c"&&cmp.length<2)return history.back();
  if(x)drawS(x);else{stopGps();dropSheetMaps();$("sh").innerHTML="";render()}});
 // Android APK: hardware Back walks the in-app history and only leaves the app from Home.
@@ -167,13 +167,14 @@ function home(){const t=new Date(),wk=new Date(Date.now()-6048e5),c=f=>db.props.
  <h2>Recent visits</h2><div class="items">${db.props.slice(-6).reverse().map(item).join("")||`<div class="card empty">${ic("pin",32)}<div>Tap <b>Add property</b> at your first site.</div></div>`}</div>`}
 function item(p){const sub=[p.name?p.id:"",p.locality||p.type].filter(Boolean).map(esc).join(" · ");
  return `<div class="card item" onclick="detail('${p.id}')">${thumb(p)}<div class="it"><div class="t1">${esc(p.name||p.id)}</div><div class="t2">${pill(p.status)}<span class="mut ell">${sub}</span></div>${p.addr?`<div class="mut ell">${ic("pin",13)} ${esc(p.addr)}</div>`:""}<div class="t3"><b>${inr(total(p))}</b><span class="mut">${[areaTxt(p),dims(p),distTo(p)!=null?`${kmTxt(distTo(p))} away`:""].filter(Boolean).join(" · ")}</span></div></div></div>`}
-const matchQ=(p,s)=>!s||JSON.stringify([p.id,p.name,p.locality,p.district,p.addr,p.owner,p.phone,p.type]).toLowerCase().includes(s.toLowerCase());
-function listItems(){const r=db.props.filter(p=>(!flt||p.status==flt)&&matchQ(p,q)).reverse();
+let mine=false;const isMine=p=>p.assign?p.assign==prof.user:p.by==prof.user;
+const matchQ=(p,s)=>!s||JSON.stringify([p.id,p.name,p.locality,p.district,p.addr,p.owner,p.phone,p.type,p.broker,p.source]).toLowerCase().includes(s.toLowerCase());
+function listItems(){const r=db.props.filter(p=>(!flt||p.status==flt)&&(!mine||isMine(p))&&matchQ(p,q)).reverse();
  return r.map(p=>cmpMode?`<div class="selrow"><input type="checkbox" aria-label="Select ${p.id} to compare" ${cmp.includes(p.id)?"checked":""} onchange="tgl('${p.id}')">${item(p)}</div>`:item(p)).join("")||`<div class="card empty">${ic("search",28)}<div>No properties match.</div></div>`}
 function list(){const n={};db.props.forEach(p=>n[p.status]=(n[p.status]||0)+1);
  return head("Properties",`${db.props.length} total`)
  +`<div class="search">${ic("search",18)}<input type="search" placeholder="Search name, address, owner, ID…" value="${esc(q)}" oninput="q=this.value;$('results').innerHTML=listItems()"></div>
- <div class="chips"><button class="chip ${!flt?"on":""}" onclick="setF('')">All <small>${db.props.length}</small></button>${ST.filter(s=>n[s]||s==flt).map(s=>`<button class="chip ${s==flt?"on":""}" style="--c:${col(s)}" onclick="setF('${s}')"><i class="dot"></i>${s} <small>${n[s]||0}</small></button>`).join("")}</div>
+ <div class="chips"><button class="chip ${mine?"on":""}" onclick="mine=!mine;render()">${ic("user",14)} Mine <small>${db.props.filter(isMine).length}</small></button><button class="chip ${!flt?"on":""}" onclick="setF('')">All <small>${db.props.length}</small></button>${ST.filter(s=>n[s]||s==flt).map(s=>`<button class="chip ${s==flt?"on":""}" style="--c:${col(s)}" onclick="setF('${s}')"><i class="dot"></i>${s} <small>${n[s]||0}</small></button>`).join("")}</div>
  <div class="toolbar"><button class="btn sm ${cmpMode?"on":""}" onclick="cmpMode=!cmpMode;if(!cmpMode)cmp=[];render()">${ic("compare",16)} ${cmpMode?"Cancel":"Select to compare"}</button>${cmpMode?`<button class="btn sm p" id="cmpbtn" onclick="compare()">Compare (${cmp.length})</button>`:""}<button class="btn sm" onclick="near()">${ic("gps",16)} Nearest first</button></div>
  <div id="results">${listItems()}</div>`}
 let cmpMode=false;
@@ -215,6 +216,7 @@ function updateMap(fit){const M=window.ptMap;if(!M)return;if(window.ptMarkers)M.
  const ps=db.props.filter(p=>hasLoc(p)&&(!flt||p.status==flt)&&matchQ(p,mq));
  window.ptMarkers=L.featureGroup(ps.map(p=>{const mk=L.marker([+p.lat,+p.lng],{icon:pinIcon(col(p.status)),title:p.name||p.id,riseOnHover:true}).bindPopup(()=>popup(p),{maxWidth:280,minWidth:230});
   mk._pid=p.id;mk.on("popupopen",()=>{M._sel=p.id;drawLinks()});mk.on("popupclose",()=>{if(M._sel==p.id){M._sel=null;drawLinks()}});return mk})).addTo(M);
+ if(M._bounds)M.removeLayer(M._bounds);M._bounds=L.layerGroup(ps.filter(p=>p.boundary).map(p=>{const r=ringOf(p.boundary);return r?L.polygon(r,{color:col(p.status),weight:2,fillOpacity:.12,interactive:false}):null}).filter(Boolean)).addTo(M);
  if(fit)fitPins(false);drawLinks()}
 // Zoom straight to the pins (street level for one pin); optionally include this device.
 function fitPins(withMe){const M=window.ptMap;if(!M)return;const pts=window.ptMarkers?window.ptMarkers.getLayers().map(m=>m.getLatLng()):[];
@@ -231,9 +233,10 @@ function fitAll(){fitPins(!!myPos)}
 // Property page: small map of the site
 function miniMap(p){if(window.ptMini){window.ptMini.remove();window.ptMini=null}if(!$("dmap")||!hasLoc(p))return;
  const ll=[+p.lat,+p.lng],m=window.ptMini=newMap("dmap",{scrollWheelZoom:false,dragging:!L.Browser.mobile,tap:false});m.setView(ll,17);L.marker(ll,{icon:pinIcon(col(p.status),true)}).addTo(m);
+ const bl=drawBoundaryOn(m,p);if(bl)m.fitBounds(bl.getBounds().extend(ll),{padding:[24,24],maxZoom:19});
  const link=()=>{if(!myPos||window.ptMini!==m)return;const d=distTo(p);showMe(m,{latitude:myPos.lat,longitude:myPos.lng,accuracy:myPos.acc},false);
   if(m._line)m.removeLayer(m._line);m._line=L.polyline([[myPos.lat,myPos.lng],ll],{color:"#2b7cff",weight:3,opacity:.8,dashArray:"6 8",interactive:false}).bindTooltip(kmTxt(d),{permanent:true,direction:"center",className:"dist"}).addTo(m);
-  if(d<=5)m.fitBounds(L.latLngBounds([ll,[myPos.lat,myPos.lng]]),{padding:[30,30],maxZoom:17});const e=$("ddist");if(e)e.innerHTML=`${ic("go",14)} <b>${kmTxt(d)}</b> from you`};
+  if(d<=5&&!p.boundary)m.fitBounds(L.latLngBounds([ll,[myPos.lat,myPos.lng]]),{padding:[30,30],maxZoom:17});const e=$("ddist");if(e)e.innerHTML=`${ic("go",14)} <b>${kmTxt(d)}</b> from you`};
  link();if(!myPos||Date.now()-myPos.at>120000)locPermitted().then(ok=>ok&&locate({goal:100,wait:12000,onFix:g=>{setMy(g);link()},onDone:g=>{setMy(g);link()},onFail:()=>{}}))}
 // Add/edit form: draggable pin to fine-tune the GPS position (or tap the map to place it)
 function pickMap(){if(window.ptPick){window.ptPick.remove();window.ptPick=null}if(!$("pmap"))return;
@@ -314,6 +317,40 @@ async function refreshAlerts(){try{if(LN())return syncAlarms();if(alertsRefreshe
 function openHash(h){if(!h)return;if(h=="#rem"){if(st().s)history.go(-st().d);setTimeout(()=>nav("rem"),50)}else route(h)}
 try{const N=LN();if(N)N.addListener("localNotificationActionPerformed",a=>{const u=a&&a.notification&&a.notification.extra&&a.notification.extra.url;if(u)openHash(new URL(u,location.origin).hash)})}catch(e){}
 if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.type=="pt-open")openHash(e.data.hash)});
+// ---- plot boundary ---------------------------------------------------------------------
+// Geodesic polygon area (same formula as the server / Leaflet.draw). pts: [[lat,lng],...]
+function areaSqm(pts){if(pts.length<3)return 0;let a=0;const R=6378137,rad=Math.PI/180;
+ for(let i=0;i<pts.length;i++){const [y1,x1]=pts[i],[y2,x2]=pts[(i+1)%pts.length];a+=(x2-x1)*rad*(2+Math.sin(y1*rad)+Math.sin(y2*rad))}return Math.abs(a*R*R/2)}
+const ringOf=b=>{try{const f=b&&(b.type=="FeatureCollection"?b.features[0]?.geometry:b.type=="Feature"?b.geometry:b);return f&&f.type=="Polygon"?f.coordinates[0].slice(0,-1).map(([x,y])=>[y,x]):null}catch(e){return null}};
+const toGeo=pts=>({type:"FeatureCollection",features:[{type:"Feature",properties:{},geometry:{type:"Polygon",coordinates:[[...pts,pts[0]].map(([y,x])=>[x,y])]}}]});
+function drawBoundaryOn(m,p,style){const r=ringOf(p.boundary);if(!r)return null;return L.polygon(r,{color:style?.color||"#f5c518",weight:style?.weight||3,fillOpacity:style?.fill??.15,interactive:false}).addTo(m)}
+let bpts=[],bmap=null;
+function drawBoundary(id){const p=P(id);if(!p)return;bpts=ringOf(p.boundary)||[];
+ const prevLayer=mapLayer;
+ sheet(sheetHead(`Boundary · ${p.id}`,esc(p.name||""))+`<div class="mut" style="margin-bottom:8px">Tap the map at each corner of the plot, or stand at a corner and tap <b>Add my position</b>. Drag a corner to adjust it.</div>
+ <div class="card mapcard"><div id="bmap"></div></div>${layerSeg()}
+ <div class="card barea" id="barea"></div>
+ <div class="row wrap" style="margin-top:10px;gap:8px"><button class="btn" onclick="bAddMe()">${ic("gps",16)} Add my position</button><button class="btn" onclick="bpts.pop();bRedraw()">Undo</button><button class="btn d" onclick="if(confirm('Remove all corners?')){bpts=[];bRedraw()}">Clear</button></div>
+ <div class="savebar"><button class="btn" onclick="closeS()">Cancel</button><button class="btn p" onclick="bSave('${id}')">Save boundary</button></div>`);
+ setTimeout(()=>{if(window.ptPick){window.ptPick.remove()}const m=window.ptPick=bmap=newMap("bmap",{tap:false});if(mapLayer=="street"&&!localStorage.getItem("mapLayer"))setLayer("sat");
+  const ctr=bpts.length?bpts[0]:hasLoc(p)?[+p.lat,+p.lng]:[20.6,78.9];m.setView(ctr,bpts.length||hasLoc(p)?18:5);
+  if(hasLoc(p))L.marker([+p.lat,+p.lng],{icon:pinIcon(col(p.status)),interactive:false}).addTo(m);
+  m.on("click",e=>{bpts.push([e.latlng.lat,e.latlng.lng]);bRedraw()});bRedraw(true)},0)}
+function bRedraw(fit){const m=bmap;if(!m||!$("bmap"))return;if(m._b)m.removeLayer(m._b);
+ const g=m._b=L.layerGroup().addTo(m);if(bpts.length>1)L.polygon(bpts,{color:"#f5c518",weight:3,fillOpacity:.2,interactive:false}).addTo(g);
+ bpts.forEach((pt,i)=>{const mk=L.marker(pt,{draggable:true,icon:L.divIcon({className:"",html:`<span class="vtx">${i+1}</span>`,iconSize:[26,26],iconAnchor:[13,13]})}).addTo(g);
+  mk.on("drag",e=>{bpts[i]=[e.latlng.lat,e.latlng.lng];if(m._b){const poly=m._b.getLayers().find(l=>l instanceof L.Polygon);if(poly)poly.setLatLngs(bpts)}bArea()});mk.on("dragend",()=>bRedraw())});
+ if(fit&&bpts.length>2)m.fitBounds(L.latLngBounds(bpts),{padding:[40,40],maxZoom:20});bArea()}
+function bArea(){const e=$("barea");if(!e)return;const sq=areaSqm(bpts)*10.7639;
+ e.innerHTML=bpts.length<3?`<span class="mut">${bpts.length} corner${bpts.length==1?"":"s"} · add at least 3</span>`:`<b>${fmt(sq/435.6)} cent</b> · ${fmt(Math.round(sq))} sq.ft · ${fmt(sq/43560)} acre · ${fmt(sq/2400)} ground <span class="mut">(${bpts.length} corners)</span>`}
+function bAddMe(){toast("Getting your position…");locate({goal:10,wait:20000,onDone:g=>{setMy(g);bpts.push([g.coords.latitude,g.coords.longitude]);bRedraw();bmap&&bmap.setView([g.coords.latitude,g.coords.longitude],Math.max(bmap.getZoom(),18));toast(`Corner added (${accTxt(g.coords.accuracy)})`)},onFail:m=>alert(m)})}
+async function bSave(id){if(bpts.length&&bpts.length<3)return toast("Add at least 3 corners, or Clear to remove the boundary");
+ put(await api("save_property",{name:id,data:{boundary:bpts.length?toGeo(bpts):null}}));toast(bpts.length?"Boundary saved":"Boundary removed");closeS()}
+// extra form sections: source & broker, assignment; caption per photo
+const formExtra=p=>{p=p||{};const V=k=>esc(p[k]??"");return `<section class="card fs"><h3>${ic("user",18)} Source & broker</h3>
+ <div class="row"><div><label for="src">Source</label><select id="src"><option value="">—</option>${opts(SOURCES,p.source)}</select></div><div><label for="asn">Assigned to</label><select id="asn"><option value="">—</option>${team.map(t=>`<option value="${esc(t.user)}" ${p.assign==t.user?"selected":""}>${esc(t.name)}</option>`).join("")}</select></div></div>
+ <div class="row"><div><label for="brk">Broker name</label><input id="brk" value="${V("broker")}"></div><div><label for="bph">Broker phone</label><input id="bph" type="tel" inputmode="tel" value="${V("bphone")}"></div></div>
+ <label for="cmm">Commission</label><input id="cmm" value="${V("comm")}" placeholder="e.g. 2% or ₹50,000"></section>`};
 function rem(){const rs=[...db.rem].sort((a,b)=>a.due.localeCompare(b.due)),nowD=new Date();
  const row=r=>{const od=!r.done&&new Date(r.due)<nowD;return `<div class="rem ${r.done?"done":""}"><input type="checkbox" aria-label="Done" ${r.done?"checked":""} onchange="remDone('${r.k}',this.checked)"><div style="flex:1;min-width:0"><div class="t">${esc(r.t)}</div><div class="mut">${ic("bell",13)} ${dt(r.due)}${od?` · <span class="overdue">Overdue</span>`:""} ${r.p?`<button class="linkchip" onclick="detail('${r.p}')">${r.p}</button>`:""}</div></div><button class="iconbtn sm" onclick="delRem('${r.k}')" aria-label="Delete reminder" title="Delete">${ic("trash",16)}</button></div>`};
  const open=rs.filter(r=>!r.done),done=rs.filter(r=>r.done).reverse();
@@ -363,12 +400,12 @@ function bak(){dl("backup.json",JSON.stringify(db),"application/json")}
 function rest(i){const f=i.files[0];if(!f)return;i.value="";f.text().then(async t=>{let d;try{d=JSON.parse(t)}catch(e){return alert("Invalid file")}
  if(!confirm(`Import ${(d.props||[]).length} properties and ${(d.rem||[]).length} reminders as new records?`))return;
  const r=await api("import_backup",{data:d});toast(`Imported ${r.properties} properties and ${r.reminders} reminders`);load()})}
-function csv(){const h=["ID","Name","Type","Address / Landmark","Locality","District","Status","Area","Unit","Length (ft)","Width (ft)","Road width (ft)","Facing","Owner","Phone","Price","PriceUnit","TotalPrice","PerCent","PerSqft","Lat","Lng","Map","Notes"];
- const r=db.props.map(p=>[p.id,p.name,p.type,p.addr,p.locality,p.district,p.status,p.area,p.unit,p.len,p.wid,p.road,p.facing,p.owner,p.phone,p.price,p.punit,Math.round(total(p)),Math.round(pc(p)),Math.round(psf(p)),p.lat,p.lng,gm(p),p.notes]);
+function csv(){const h=["ID","Name","Type","Address / Landmark","Locality","District","Status","Area","Unit","Length (ft)","Width (ft)","Road width (ft)","Facing","Owner","Phone","Source","Broker","Broker phone","Commission","Assigned to","Measured area (sq.ft)","Docs verified","Price","PriceUnit","TotalPrice","PerCent","PerSqft","Lat","Lng","Map","Notes"];
+ const r=db.props.map(p=>[p.id,p.name,p.type,p.addr,p.locality,p.district,p.status,p.area,p.unit,p.len,p.wid,p.road,p.facing,p.owner,p.phone,p.source,p.broker,p.bphone,p.comm,p.assign,p.barea?Math.round(p.barea):"",(p.docs||[]).filter(d=>d.status=="Verified").length,p.price,p.punit,Math.round(total(p)),Math.round(pc(p)),Math.round(psf(p)),p.lat,p.lng,gm(p),p.notes]);
  dl("properties.csv","﻿"+[h,...r].map(a=>a.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"),"text/csv")}
 function compare(){if(cmp.length<2)return alert("Select 2–5 properties");openS({t:"c"})}
 function drawCompare(){const ps=cmp.map(P).filter(Boolean);
- const rows=[["Name",p=>p.name],["Address / Landmark",p=>p.addr],["Location",p=>p.locality],["Type",p=>p.type],["Area",p=>areaTxt(p)],["Length (ft)",p=>p.len],["Width (ft)",p=>p.wid],["Road width (ft)",p=>p.road],["Facing",p=>p.facing],["Price",p=>inr(total(p))],["Per cent",p=>inr(pc(p))],["Per sq.ft",p=>inr(psf(p))],["Owner",p=>p.owner],["Rating",p=>p.rating?"★".repeat(p.rating):""],["Status",p=>p.status],["Notes",p=>p.notes]];
+ const rows=[["Name",p=>p.name],["Address / Landmark",p=>p.addr],["Location",p=>p.locality],["Type",p=>p.type],["Area",p=>areaTxt(p)],["Length (ft)",p=>p.len],["Width (ft)",p=>p.wid],["Road width (ft)",p=>p.road],["Facing",p=>p.facing],["Price",p=>inr(total(p))],["Per cent",p=>inr(pc(p))],["Per sq.ft",p=>inr(psf(p))],["Owner",p=>p.owner],["Source",p=>p.source],["Broker",p=>p.broker],["Measured area",p=>p.barea?`${fmt(p.barea/435.6)} cent`:""],["Docs verified",p=>`${(p.docs||[]).filter(d=>d.status=="Verified").length}/8`],["Negotiated",p=>p.neg?inr(p.neg):""],["Rating",p=>p.rating?"★".repeat(p.rating):""],["Status",p=>p.status],["Notes",p=>p.notes]];
  sheet(sheetHead("Compare",`${ps.length} properties`)+`<div class="scroll"><table><tr><th></th>${ps.map(p=>`<th>${p.id}</th>`).join("")}</tr>${rows.map(([l,f])=>{const v=ps.map(f),d=new Set(v.map(String)).size>1;return `<tr><td>${l}</td>${v.map(x=>`<td class="${d?"diff":""}">${esc(x)}</td>`).join("")}</tr>`}).join("")}</table></div><p class="mut">Highlighted rows differ between properties.</p>`)}
 function sheet(h){$("sh").innerHTML=`<div class="sheet"><div class="in">${h}</div></div>`}
 let draft;
@@ -388,14 +425,15 @@ function propForm(p){p=p||{};const V=k=>esc(p[k]??"");
  <div id="szh" class="hint"></div>
  <label for="face">Facing</label><select id="face"><option value="">—</option>${opts(FACES,p.facing)}</select></section>
  <section class="card fs"><h3>${ic("user",18)} Owner</h3><div class="row"><div><label for="own">Owner name</label><input id="own" value="${V("owner")}" autocomplete="off"></div><div><label for="tel">Phone</label><input id="tel" type="tel" inputmode="tel" value="${V("phone")}"></div></div></section>
+ ${formExtra(p)}
  <section class="card fs"><h3>${ic("rupee",18)} Price</h3><div class="row"><div><label for="pr">Expected price (₹)</label><input id="pr" type="number" step="any" inputmode="decimal" value="${V("price")}" oninput="sizeHint()"></div><div><label for="pu">Price unit</label><select id="pu" onchange="sizeHint()">${opts(PUNITS,p.punit||"Total")}</select></div></div></section>
  <section class="card fs"><h3>${ic("note",18)} Notes</h3><textarea id="nt" rows="3" placeholder="Water, EB, approvals, neighbourhood…">${V("notes")}</textarea></section>`}
-function formVals(){const v=i=>(($(i)||{}).value||"").trim();return {name:v("stitle"),type:v("type"),addr:v("addr"),locality:v("loc"),district:v("dist"),lat:v("lat"),lng:v("lng"),area:v("area"),unit:v("unit"),len:v("len"),wid:v("wid"),road:v("road"),facing:v("face"),owner:v("own"),phone:v("tel"),price:v("pr"),punit:v("pu"),notes:v("nt"),photos:draft.photos}}
+function formVals(){const v=i=>(($(i)||{}).value||"").trim();return {name:v("stitle"),type:v("type"),addr:v("addr"),locality:v("loc"),district:v("dist"),lat:v("lat"),lng:v("lng"),area:v("area"),unit:v("unit"),len:v("len"),wid:v("wid"),road:v("road"),facing:v("face"),owner:v("own"),phone:v("tel"),price:v("pr"),punit:v("pu"),notes:v("nt"),source:v("src"),broker:v("brk"),bphone:v("bph"),comm:v("cmm"),assign:v("asn"),photos:draft.photos}}
 // Live summary: area from length × width (feet), conversions and the total price.
 function sizeHint(){const e=$("szh");if(!e)return;const f=formVals(),x={...f,len:+f.len||0,wid:+f.wid||0,price:+f.price||0};
  const auto=!(+f.area)&&x.len&&x.wid;x.area=+f.area||(auto?x.len*x.wid/(U[f.unit]||1):0);const s=sqft(x);
  e.innerHTML=s?`${auto?`${fmt(x.len)} × ${fmt(x.wid)} ft = `:""}<b>${fmt(Math.round(s))} sq.ft</b> · ${fmt(s/435.6)} cent${s>=43560?` · ${fmt(s/43560)} acre`:""}${total(x)?` · total <b>${inr(total(x))}</b>`:""}`:""}
-function drawPh(){const e=$("pv");if(!e)return;e.innerHTML=draft.photos.map((x,i)=>`<div class="phw"><img src="${esc(x.d)}" alt=""><button type="button" class="phx" onclick="rmPh(${i})" aria-label="Remove photo">×</button></div>`).join("")+`<label class="addph">${ic("camera",24)}<span>Add photo</span><input id="ph" type="file" accept="image/*" capture="environment" multiple hidden onchange="photos(this)"></label>`}
+function drawPh(){const e=$("pv");if(!e)return;e.innerHTML=draft.photos.map((x,i)=>`<div class="phw"><img src="${esc(x.d)}" alt=""><button type="button" class="phx" onclick="rmPh(${i})" aria-label="Remove photo">×</button><input class="cap" value="${esc(x.c||"")}" placeholder="Caption" aria-label="Photo caption" oninput="draft.photos[${i}].c=this.value"></div>`).join("")+`<label class="addph">${ic("camera",24)}<span>Add photo</span><input id="ph" type="file" accept="image/*" capture="environment" multiple hidden onchange="photos(this)"></label>`}
 function rmPh(i){draft.photos.splice(i,1);drawPh()}
 function edit(){openS({t:"a"})}
 function drawAdd(){draft={photos:[],lat:"",lng:""};
@@ -408,26 +446,114 @@ function drawEdit(id){const p=P(id);if(!p)return;draft={photos:[...p.photos],lat
  sheet(sheetHead(`Edit ${p.id}`,esc(p.name||""))+propForm(p)+`<div class="savebar"><button class="btn" onclick="history.back()">Cancel</button><button class="btn p" onclick="saveEdit('${id}')">Save changes</button></div>`);drawPh();sizeHint();pickMap()}
 async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;put(await api("save_property",{name:id,data:formVals()}));toast("Changes saved");history.back()}
 function detail(id){if(P(id))openS({t:"d",id})}
+// ---- property page ------------------------------------------------------------------
+const DOC_TYPES=["EC (Encumbrance Certificate)","Patta / Chitta","FMB Sketch","Sale Deed","Parent Documents","Approval (DTCP / CMDA)","Tax Receipt","EB / Water"];
+const DOC_COL={Pending:"#8a948f",Received:"#2b6cb0",Verified:"#1f7a4d",Issue:"#c0392b"};
+const PRICE_KINDS=["Asking","Offered","Counter","Negotiated","Final"];
+const SOURCES=["Direct Owner","Broker","Online Listing","Referral","Newspaper / Board","Other"];
+let team=[];
+const who=u=>{const t=team.find(x=>x.user==u);return t?t.name:(u==prof.user?(prof.full_name||u):u||"")};
+const telBtns=(ph)=>ph?`<a class="btn sm" href="tel:${esc(ph)}">${ic("phone",14)} Call</a><a class="btn sm" href="https://wa.me/${esc(ph.replace(/\D/g,""))}" target="_blank" rel="noopener">${ic("chat",14)} WhatsApp</a>`:"";
 function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
  const fact=(l,v,s="")=>`<div><span>${l}</span><b>${v||"—"}</b>${s?`<small>${s}</small>`:""}</div>`;
  const act=(icn,l,on)=>`<button class="act" onclick="${on}">${ic(icn)}${l}</button>`;
+ const docsDone=(p.docs||[]).filter(d=>d.status=="Verified"||d.status=="Received").length;
  sheet(sheetHead(`<span class="pid">${p.id}</span> ${esc(p.name||"")}`,esc([p.type,p.locality].filter(Boolean).join(" · ")),`<button class="iconbtn" onclick="editP('${id}')" aria-label="Edit">${ic("edit")}</button>`)
- +(ph.length?`<div class="gallery">${ph.map(x=>`<img class="${ph.length==1?"one":""}" src="${esc(x.d)}" alt="" loading="lazy">`).join("")}</div>`:`<div class="hero-ph">${ic("image",40)}</div>`)
- +`<div class="meta">${pill(p.status)}<span class="mut">Added ${dt(p.created)}</span>${p.rating?`<span class="mut">· ${"★".repeat(p.rating)}</span>`:""}</div>
+ +(p._local?`<div class="card pending">${ic("upload",16)} Saved on this phone. It will upload automatically when you're back online.</div>`:"")
+ +(ph.length?`<div class="gallery">${ph.map((x,i)=>`<figure class="${ph.length==1?"one":""}" onclick="viewPh('${id}',${i})"><img src="${esc(x.d)}" alt="${esc(x.c||"")}" loading="lazy">${x.c?`<figcaption>${esc(x.c)}</figcaption>`:""}</figure>`).join("")}</div>`:`<div class="hero-ph">${ic("image",40)}</div>`)
+ +`<div class="meta">${pill(p.status)}<span class="mut">Added ${dt(p.created)}</span>${p.rating?`<span class="mut">· ${"★".repeat(p.rating)}</span>`:""}${p.assign?`<span class="chip sm">${ic("user",12)} ${esc(who(p.assign))}</span>`:""}</div>
  ${p.addr?`<div class="addr">${ic("pin",16)}<span>${esc(p.addr)}${p.locality?`, ${esc(p.locality)}`:""}${p.district?`, ${esc(p.district)}`:""}</span></div>`:""}
- <div class="actions">${hasLoc(p)?act("map","Maps",`window.open('${gm(p)}','_blank')`)+act("user","Street View",`window.open('${svUrl(p)}','_blank')`)+act("go","Navigate",`window.open('https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}','_blank')`):""}${p.phone?act("phone","Call",`window.location.href='tel:${esc(p.phone)}'`)+act("chat","WhatsApp",`window.open('https://wa.me/${esc(p.phone.replace(/\D/g,""))}','_blank')`):""}${act("share","Share",`share('${id}')`)}${hasLoc(p)?act("copy","Copy pin",`navigator.clipboard&&navigator.clipboard.writeText(gm(P('${id}'))).then(()=>toast('Location copied'))`):""}</div>
- ${hasLoc(p)?`<div class="card mapcard minimap"><div id="dmap"></div></div><div id="ddist" class="mut" style="margin-top:8px">${distTo(p)!=null?`${ic("go",14)} <b>${kmTxt(distTo(p))}</b> from you`:""}</div>${layerSeg()}`:(p.lat!==""&&p.lat!=null?`<div class="card" style="border-color:var(--danger)">${ic("info",14)} The saved location (${esc(p.lat)}, ${esc(p.lng)}) is not valid. Tap <b>Edit</b> and capture GPS again.</div>`:"")}
- <div class="facts" style="margin-top:12px">${fact("Area",areaTxt(p),sqft(p)?`${fmt(Math.round(sqft(p)))} sq.ft · ${fmt(sqft(p)/435.6)} cent`:"")}${fact("Length × width",dims(p))}${fact("Road width",p.road?`${fmt(p.road)} ft`:"")}${fact("Facing",esc(p.facing))}${fact("Price",inr(total(p)),p.price&&p.punit!="Total"?`${inr(p.price)} ${p.punit.toLowerCase()}`:"")}${fact("Per cent",inr(pc(p)),psf(p)?`${inr(psf(p))} per sq.ft`:"")}</div>
+ <div class="actions">${hasLoc(p)?act("map","Maps",`window.open('${gm(p)}','_blank')`)+act("user","Street View",`window.open('${svUrl(p)}','_blank')`)+act("go","Navigate",`window.open('${navUrl(p)}','_blank')`):""}${p.phone?act("phone","Call",`window.location.href='tel:${esc(p.phone)}'`)+act("chat","WhatsApp",`window.open('https://wa.me/${esc(p.phone.replace(/\D/g,""))}','_blank')`):""}${act("image","Share card",`shareCard('${id}')`)}${p._local?"":act("note","Brochure",`window.open('/property-brochure?name=${encodeURIComponent(id)}','_blank')`)}${act("share","Share text",`share('${id}')`)}</div>
+ ${hasLoc(p)?`<div class="card mapcard minimap"><div id="dmap"></div></div><div class="row tight" style="margin-top:8px;align-items:center"><div id="ddist" class="mut" style="flex:1">${distTo(p)!=null?`${ic("go",14)} <b>${kmTxt(distTo(p))}</b> from you`:""}</div>${p._local?"":`<button class="btn sm" onclick="openS({t:'b',id:'${id}'})">${ic("ruler",15)} ${p.boundary?"Edit":"Draw"} boundary</button>`}</div>${layerSeg()}`:(p.lat!==""&&p.lat!=null?`<div class="card" style="border-color:var(--danger)">${ic("info",14)} The saved location (${esc(p.lat)}, ${esc(p.lng)}) is not valid. Tap <b>Edit</b> and capture GPS again.</div>`:"")}
+ <div class="facts" style="margin-top:12px">${fact("Area",areaTxt(p),sqft(p)?`${fmt(Math.round(sqft(p)))} sq.ft · ${fmt(sqft(p)/435.6)} cent`:"")}${fact("Length × width",dims(p))}${fact("Road width",p.road?`${fmt(p.road)} ft`:"")}${fact("Facing",esc(p.facing))}${fact("Price",inr(total(p)),p.price&&p.punit!="Total"?`${inr(p.price)} ${(p.punit||"").toLowerCase()}`:"")}${fact("Per cent",inr(pc(p)),psf(p)?`${inr(psf(p))} per sq.ft`:"")}${p.barea?fact("Measured (boundary)",`${fmt(p.barea/435.6)} cent`,`${fmt(Math.round(p.barea))} sq.ft · ${fmt(p.barea/43560)} acre`):""}</div>
+ ${p.barea&&!p._local?`<button class="btn sm" style="margin-top:8px" onclick="useMeasured('${id}')">${ic("ruler",14)} Use measured area as the area</button>`:""}
  ${p.owner||p.phone?`<h2>Owner</h2><div class="card"><b>${esc(p.owner||"—")}</b>${p.phone?` <span class="mut">· ${esc(p.phone)}</span>`:""}</div>`:""}
+ ${p.source||p.broker?`<h2>Source & broker</h2><div class="card">${p.source?`<div class="mut">Source: <b style="color:var(--ink)">${esc(p.source)}</b></div>`:""}${p.broker||p.bphone?`<div style="margin-top:6px"><b>${esc(p.broker||"Broker")}</b>${p.bphone?` <span class="mut">· ${esc(p.bphone)}</span>`:""}${p.comm?` <span class="mut">· commission ${esc(p.comm)}</span>`:""}</div><div class="row tight wrap" style="margin-top:8px;gap:8px">${telBtns(p.bphone)}</div>`:""}</div>`:""}
  ${p.notes?`<h2>Notes</h2><div class="card" style="white-space:pre-wrap">${esc(p.notes)}</div>`:""}
- <h2>Deal</h2><section class="card"><div class="row"><div><label for="neg">Negotiated total (₹)</label><input id="neg" type="number" inputmode="decimal" value="${p.neg||""}"></div><div><label for="rt2">Rating</label><select id="rt2"><option value="">—</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${p.rating==n?"selected":""}>${"★".repeat(n)}</option>`).join("")}</select></div></div><button class="btn" style="margin-top:10px" onclick="deal('${id}')">Save deal</button></section>
+ ${p._local?"":`<h2>Team</h2><section class="card"><label for="asg" style="margin-top:0">Assigned to</label><select id="asg" onchange="assignTo('${id}',this.value)"><option value="">— Not assigned —</option>${team.map(t=>`<option value="${esc(t.user)}" ${p.assign==t.user?"selected":""}>${esc(t.name)}${t.user==prof.user?" (you)":""}</option>`).join("")}</select></section>`}
+ ${p._local?"":`<div class="sechead"><h2>Documents (${docsDone}/${DOC_TYPES.length})</h2></div><section class="card docs">${docRows(p)}</section>`}
+ <div class="sechead"><h2>Price history</h2>${p._local?"":`<select id="rt2" class="mini" aria-label="Rating" onchange="deal('${id}')"><option value="">Rating —</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${p.rating==n?"selected":""}>${"★".repeat(n)}</option>`).join("")}</select>`}</div>
+ <section class="card">${(p.prices||[]).length?`<ul class="tl prices">${[...p.prices].reverse().map(x=>`<li><time>${dt(x.at)}${x.by?` · ${esc(who(x.by))}`:""}</time><span class="kind k-${x.kind}">${x.kind}</span> <b>${inr(x.amount)}</b>${x.note?` <span class="mut">· ${esc(x.note)}</span>`:""}</li>`).join("")}</ul>`:`<div class="mut">No prices yet. The asking price is recorded automatically.</div>`}
+ ${p._local?"":`<div class="row" style="margin-top:12px"><select id="pk" aria-label="Type">${opts(PRICE_KINDS,"Offered")}</select><input id="pa" type="number" inputmode="decimal" placeholder="Amount ₹"></div><div class="row" style="margin-top:8px"><input id="pn" placeholder="Note (optional)"><button class="btn p" style="flex:none" onclick="addPrice('${id}')">Add</button></div>`}</section>
  <h2>Status</h2><section class="card"><div class="row"><select id="ns" aria-label="New status">${opts(ST,p.status)}</select><button class="btn p" style="flex:none" onclick="setS('${id}')">Update</button></div><input id="sn" placeholder="Note (optional)" style="margin-top:8px">
  <ul class="tl">${[...p.history].reverse().map(h=>`<li><time>${dt(h.at)}</time>${h.from?`${esc(h.from)} → `:""}<b>${esc(h.to)}</b>${h.note?` · ${esc(h.note)}`:""}</li>`).join("")}</ul></section>
  <h2>Visits (${p.visits.length})</h2><section class="card"><textarea id="vn" rows="2" placeholder="What was discussed, new price, follow-up…"></textarea><button class="btn" style="margin-top:8px" onclick="visit('${id}')">${ic("plus",16)} Log visit</button>
  ${p.visits.length?`<ul class="tl">${[...p.visits].reverse().map(v=>`<li><time>${dt(v.at)}</time>${esc(v.note)}</li>`).join("")}</ul>`:""}</section>
- <div class="danger"><button class="btn" onclick="editP('${id}')">${ic("edit",16)} Edit details</button><button class="btn d" onclick="delP('${id}')">${ic("trash",16)} Delete</button></div>`);setTimeout(()=>miniMap(p),0)}
+ ${p._local?"":`<h2>Comments</h2><section class="card" id="cmts"><div class="mut">Loading…</div></section>`}
+ <div class="danger"><button class="btn" onclick="editP('${id}')">${ic("edit",16)} Edit details</button><button class="btn d" onclick="delP('${id}')">${ic("trash",16)} Delete</button></div>`);
+ setTimeout(()=>miniMap(p),0);if(!p._local)loadComments(id)}
+async function useMeasured(id){const p=P(id);if(!p||!p.barea)return;const u=p.unit||"Cent";const v=Math.round(p.barea/(U[u]||1)*100)/100;
+ if(!confirm(`Set the area to ${fmt(v)} ${u} (measured from the boundary)?`))return;put(await api("save_property",{name:id,data:{area:v,unit:u}}));redraw()}
+async function assignTo(id,user){put(await api("assign",{name:id,user}));toast(user?`Assigned to ${who(user)}`:"Unassigned");redraw()}
+async function addPrice(id){const a=+$("pa").value;if(!a)return toast("Enter an amount");put(await api("add_price",{name:id,kind:$("pk").value,amount:a,note:$("pn").value.trim()}));redraw()}
+
+// documents checklist
+function docRows(p){const ds=p.docs||[],rows=DOC_TYPES.map(t=>({t,d:ds.find(x=>x.type==t)})).concat(ds.filter(x=>x.type=="Other").map(d=>({t:"Other",d})));
+ return rows.map(({t,d},n)=>{const st=d?d.status:"Pending",key=d?`r${d.i}`:`t${n}`;
+  return `<div class="docrow" id="doc-${key}"><button class="docmain" onclick="docEdit('${p.id}','${key}')"><i class="dot" style="--c:${DOC_COL[st]}"></i><span class="dt">${esc(t=="Other"&&d&&d.note?d.note:t)}</span><span class="dstat" style="color:${DOC_COL[st]}">${st}</span></button>${d&&d.file?`<a class="iconbtn sm" href="${esc(d.file)}" target="_blank" rel="noopener" aria-label="Open file">${ic("ext",16)}</a>`:""}</div>`}).join("")
+  +`<button class="btn sm" style="margin-top:10px" onclick="docEdit('${p.id}','new')">${ic("plus",14)} Other document</button>`}
+function docEdit(id,key){const p=P(id);document.querySelectorAll(".docedit").forEach(e=>e.remove());const ds=p.docs||[];
+ let d=null,t="Other";if(key[0]=="r")d=ds.find(x=>x.i==+key.slice(1)),t=d.type;else if(key[0]=="t")t=DOC_TYPES[+key.slice(1)]||"Other";
+ const html=`<div class="docedit"><label>Status</label><div class="seg">${["Pending","Received","Verified","Issue"].map(s=>`<button type="button" class="${(d?d.status:"Pending")==s?"on":""}" onclick="this.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${s}</button>`).join("")}</div>
+  <label>Note</label><input class="dnote" value="${esc(d?d.note:"")}" placeholder="${t=="Other"?"What document is this?":"Survey no., date, remarks…"}">
+  <label>File (photo or PDF)</label><input class="dfile" type="file" accept="image/*,application/pdf">${d&&d.file?`<div class="mut">Current: <a href="${esc(d.file)}" target="_blank" rel="noopener">${esc(d.file.split("/").pop())}</a></div>`:""}
+  <div class="row" style="margin-top:10px">${d?`<button class="btn d" onclick="docRemove('${id}',${d.i})">Remove</button>`:""}<button class="btn" onclick="this.closest('.docedit').remove()">Cancel</button><button class="btn p" onclick="docSave('${id}','${esc(t)}',${d?d.i:0},this)">Save</button></div></div>`;
+ const anchor=key=="new"?document.querySelector(".docs > .btn"):$(`doc-${key}`);anchor.insertAdjacentHTML(key=="new"?"beforebegin":"afterend",html)}
+async function uploadFile(file,id){if(!navigator.onLine)throw new Error("You're offline. Attach the file when you're back online.");
+ const f=new FormData();f.append("file",file,file.name);f.append("is_private","1");f.append("doctype","Property");f.append("docname",id);f.append("folder","Home/Attachments");
+ busy++;loadBar();try{const r=await fetch("/api/method/upload_file",{method:"POST",credentials:"same-origin",headers:{"X-Frappe-CSRF-Token":window.csrf_token||"",Accept:"application/json"},body:f});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(errMsg(j)||"Upload failed");return j.message.file_url}finally{busy--;loadBar()}}
+async function docSave(id,type,row,btn){const box=btn.closest(".docedit"),status=box.querySelector(".seg .on").textContent,note=box.querySelector(".dnote").value.trim(),fi=box.querySelector(".dfile").files[0];
+ if(type=="Other"&&!row&&!note)return toast("Say what the document is in the note");
+ let file;try{if(fi){if(fi.size>15e6)return toast("File is larger than 15 MB");file=await uploadFile(fi,id)}}catch(e){return toast(e.message)}
+ put(await api("set_document",{name:id,doc_type:type,status,note,...(file?{file}:{}),...(row?{row}:{})}));toast("Document saved");redraw()}
+async function docRemove(id,row){if(!confirm("Remove this document from the checklist?"))return;put(await api("remove_document",{name:id,row}));redraw()}
+
+// comments with @mentions
+let mentionSel=new Set();
+function cleanComment(html){const d=new DOMParser().parseFromString(`<div>${html||""}</div>`,"text/html"),out=[];
+ const walk=n=>{for(const c of n.childNodes){if(c.nodeType==3)out.push(esc(c.textContent));else if(c.nodeType==1){if(c.classList.contains("mention"))out.push(`<b class="mention">${esc(c.textContent)}</b>`);else if(c.tagName=="BR")out.push("<br>");else{if(/^(P|DIV)$/.test(c.tagName)&&out.length)out.push("<br>");walk(c)}}}};walk(d.body);return out.join("")}
+async function loadComments(id){const box=$("cmts");if(!box)return;let cs=[];try{cs=await api("get_comments",{name:id})}catch(e){box.innerHTML=`<div class="mut">Comments are not available offline.</div>`;return}
+ if(!$("cmts")||st().s?.id!=id)return;mentionSel=new Set();
+ box.innerHTML=(cs.length?`<ul class="cmts">${cs.map(c=>`<li><div class="chead"><b>${esc(c.who)}</b><time>${dt(c.at)}</time>${c.by==prof.user?`<button class="iconbtn sm" onclick="delComment('${id}','${c.k}')" aria-label="Delete comment">${ic("trash",14)}</button>`:""}</div><div>${cleanComment(c.html)}</div></li>`).join("")}</ul>`:`<div class="mut">No comments yet. Type @ to mention someone.</div>`)
+  +`<div class="cbox"><textarea id="ctext" rows="2" placeholder="Write a comment… type @ to mention" oninput="mentionAuto(this)"></textarea><div id="mlist" class="mlist" hidden></div><button class="btn p" style="margin-top:8px" onclick="postComment('${id}')">Post comment</button></div>`}
+function mentionAuto(t){const m=t.value.slice(0,t.selectionStart).match(/@([\w.]*)$/),box=$("mlist");if(!m){box.hidden=true;return}
+ const q=m[1].toLowerCase(),hits=team.filter(x=>x.name.toLowerCase().includes(q)||x.user.toLowerCase().includes(q)).slice(0,6);
+ if(!hits.length){box.hidden=true;return}box.hidden=false;box.innerHTML=hits.map(h=>`<button type="button" onmousedown="event.preventDefault()" onclick="mentionPick('${esc(h.user)}')">${esc(h.name)} <span class="mut">${esc(h.user)}</span></button>`).join("")}
+function mentionPick(user){const t=$("ctext"),h=team.find(x=>x.user==user),pos=t.selectionStart,before=t.value.slice(0,pos).replace(/@([\w.]*)$/,`@${h.name} `);
+ t.value=before+t.value.slice(pos);t.focus();t.selectionStart=t.selectionEnd=before.length;mentionSel.add(user);$("mlist").hidden=true}
+async function postComment(id){const t=$("ctext"),text=t.value.trim();if(!text)return;const mentions=[...mentionSel].filter(u=>text.includes("@"+who(u)));
+ await api("add_comment",{name:id,text,mentions});toast(mentions.length?`Comment posted · ${mentions.length} notified`:"Comment posted");loadComments(id)}
+async function delComment(id,k){if(!confirm("Delete this comment?"))return;await api("delete_comment",{name:id,comment:k});loadComments(id)}
+
+// full-screen photo viewer (swipe; double-tap to zoom)
+function viewPh(id,i){openS({t:"v",id,i})}
+function drawViewer(id,i){const p=P(id);if(!p)return;const ph=p.photos||[];
+ $("sh").innerHTML=`<div class="viewer" role="dialog" aria-label="Photos"><div class="vtop"><button class="iconbtn" onclick="closeS()" aria-label="Close">${ic("back")}</button><span id="vcount">${i+1} / ${ph.length}</span></div>
+  <div class="vtrack" id="vtrack">${ph.map(x=>`<div class="vslide"><div class="vzoom" ondblclick="vzoom(this,event)"><img src="${esc(x.d)}" alt="${esc(x.c||"")}"></div><div class="vcap">${x.c?`<b>${esc(x.c)}</b>`:""}${x.at?`<span>${dt(x.at)}</span>`:""}</div></div>`).join("")}</div></div>`;
+ const tr=$("vtrack");tr.scrollLeft=i*tr.clientWidth;tr.onscroll=()=>{const n=Math.round(tr.scrollLeft/tr.clientWidth);const c=$("vcount");if(c)c.textContent=`${n+1} / ${ph.length}`};
+ let last=0;tr.addEventListener("touchend",e=>{const t=Date.now();if(t-last<300){const z=e.target.closest(".vzoom");if(z)vzoom(z,e.changedTouches[0])}last=t})}
+function vzoom(z,e){const on=z.classList.toggle("zoomed");if(on){const r=z.getBoundingClientRect(),fx=((e.clientX||r.width/2)-r.left)/r.width,fy=((e.clientY||r.height/2)-r.top)/r.height;requestAnimationFrame(()=>{z.scrollLeft=fx*z.scrollWidth-r.width/2;z.scrollTop=fy*z.scrollHeight-r.height/2})}}
+
+// share card: an image with photo, facts and price (no owner details)
+async function shareCard(id){const p=P(id);if(!p)return;toast("Preparing card…");const W=1080,H=1350,c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d");
+ g.fillStyle="#f4f3ef";g.fillRect(0,0,W,H);
+ const img=p.photos&&p.photos[0]?await new Promise(r=>{const im=new Image();im.onload=()=>r(im);im.onerror=()=>r(null);im.src=p.photos[0].d}):null;
+ if(img){const s=Math.max(W/img.width,640/img.height),w=img.width*s,h=img.height*s;g.drawImage(img,(W-w)/2,(640-h)/2,w,h)}else{g.fillStyle="#e3f1ea";g.fillRect(0,0,W,640);g.fillStyle="#1f6f50";g.font="bold 120px system-ui";g.textAlign="center";g.fillText("📍",W/2,360);g.textAlign="left"}
+ g.fillStyle=col(p.status);g.beginPath();g.roundRect?g.roundRect(48,590,40+g.measureText(p.status).width*2.2,64,32):g.rect(48,590,300,64);g.fill();g.fillStyle="#fff";g.font="bold 34px system-ui";g.fillText(p.status,70,634);
+ const wrap=(t,x,y,max,lh,font,color,lines=2)=>{g.font=font;g.fillStyle=color;const ws=String(t).split(" ");let line="",n=0;for(const w of ws){const tst=line?line+" "+w:w;if(g.measureText(tst).width>max&&line){g.fillText(line,x,y);y+=lh;line=w;if(++n>=lines-1){break}}else line=tst}g.fillText(line,x,y);return y+lh};
+ let y=wrap(p.name||p.id,56,730,W-112,70,"bold 60px system-ui","#1b221f");
+ y=wrap([p.addr,p.locality,p.district].filter(Boolean).join(", ")||p.type,56,y,W-112,48,"38px system-ui","#66706a");
+ g.fillStyle="#1f6f50";g.font="bold 76px system-ui";g.fillText(inr(total(p)),56,y+60);y+=100;
+ const facts=[["Area",areaTxt(p)||"—"],["Size",dims(p)||"—"],["Road",p.road?fmt(p.road)+" ft":"—"],["Facing",p.facing||"—"],["Per cent",pc(p)?inr(pc(p)):"—"],["Type",p.type||"—"]];
+ facts.forEach(([l,v],k)=>{const x=56+(k%3)*330,yy=y+Math.floor(k/3)*120;g.fillStyle="#66706a";g.font="30px system-ui";g.fillText(l.toUpperCase(),x,yy);g.fillStyle="#1b221f";g.font="bold 40px system-ui";g.fillText(String(v).slice(0,16),x,yy+48)});
+ g.fillStyle="#1f6f50";g.fillRect(0,H-110,W,110);g.fillStyle="#fff";g.font="bold 34px system-ui";g.fillText(`${prof.full_name||"Property Tracker"}${prof.phone?" · "+prof.phone:""}`,56,H-45);
+ if(hasLoc(p)){g.font="28px system-ui";g.textAlign="right";g.fillText(`${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`,W-56,H-45);g.textAlign="left"}
+ const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",.9)),file=new File([blob],`${p.id}.jpg`,{type:"image/jpeg"});
+ const text=`${p.name||p.id} · ${inr(total(p))}${hasLoc(p)?"\n"+gm(p):""}`;
+ if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],text})}catch(e){}}
+ else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=file.name;a.click();toast("Card saved as an image")}}
 async function setS(id){const p=P(id),to=$("ns").value;if(to!=p.status)put(await api("set_status",{name:id,status:to,note:$("sn").value}));redraw()}
-async function deal(id){put(await api("update_deal",{name:id,negotiated_price:$("neg").value,rating:$("rt2").value}));redraw()}
+async function deal(id){put(await api("update_deal",{name:id,rating:$("rt2").value}));toast("Rating saved")}
 async function delP(id){if(!confirm(`Delete ${id}?`))return;await api("delete_property",{name:id});db.props=db.props.filter(x=>x.id!=id);db.rem.forEach(r=>{if(r.p==id)r.p=""});cmp=cmp.filter(x=>x!=id);closeS()}
 async function visit(id){const n=$("vn").value.trim();if(!n)return;put(await api("log_visit",{name:id,note:n}));redraw()}
 function share(id){const p=P(id),t=`${p.name?p.name+" ("+p.id+")":p.id} · ${p.type}${p.locality?" · "+p.locality:""}${p.addr?"\n"+p.addr:""}\n${[areaTxt(p),dims(p),p.road?"road "+fmt(p.road)+" ft":"",p.facing?p.facing+" facing":""].filter(Boolean).join(", ")||"—"}\nPrice ${inr(total(p))} · ${p.status}${p.lat?"\n"+gm(p):""}${p.notes?"\n"+p.notes:""}`;navigator.share?navigator.share({text:t}).catch(()=>{}):navigator.clipboard?.writeText(t).then(()=>toast("Summary copied (owner details excluded)"))}
