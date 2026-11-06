@@ -43,8 +43,10 @@ FIELD_MAP = {
 	"bphone": "broker_phone",
 	"comm": "commission",
 	"assign": "assigned_to",
+	"acc": "location_accuracy",
+	"lsrc": "location_source",
 }
-NUMERIC = {"lat", "lng", "area", "len", "wid", "road", "price", "neg"}
+NUMERIC = {"lat", "lng", "area", "len", "wid", "road", "price", "neg", "acc"}
 
 
 def check_app_permission():

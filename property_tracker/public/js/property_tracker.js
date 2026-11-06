@@ -50,7 +50,7 @@ function netBanner(){const e=$("net");if(!e)return;const n=outbox.length,f=faile
 function applyLocal(m,a){const P2=id=>db.props.find(p=>p.id==id),now=new Date().toISOString();
  if(m=="save_property"){const d={...a.data};let p=a.name?P2(a.name):null;const num=k=>d[k]!==undefined&&d[k]!==""&&d[k]!=null?+d[k]:"";
   if(!p){p={id:a._tmp,_local:true,status:d.status||"Visited",created:now,by:prof.user,visits:[],history:[{at:now,from:"",to:d.status||"Visited",note:"Created"}],prices:[],docs:[],photos:[],boundary:null,barea:""};db.props.push(p)}
-  for(const k of Object.keys(d))if(k!="photos"&&k!="status")p[k]=["lat","lng","area","len","wid","road","price","neg"].includes(k)?num(k):d[k];
+  for(const k of Object.keys(d))if(k!="photos"&&k!="status")p[k]=["lat","lng","area","len","wid","road","price","neg","acc"].includes(k)?num(k):d[k];
   if(d.photos)p.photos=d.photos.map(x=>({d:x.d,at:x.at,c:x.c||""}));
   if(!+p.area&&p.len&&p.wid)p.area=Math.round(p.len*p.wid/(U[p.unit]||1)*100)/100;
   if(p.price&&!p.prices.some(x=>x.kind=="Asking"&&x.amount==Math.round(total(p))))p.prices.push({at:now,kind:"Asking",amount:Math.round(total(p)),note:"Asking price",by:prof.user});
@@ -97,7 +97,7 @@ const gm=p=>`https://www.google.com/maps?q=${p.lat},${p.lng}`;
 const now=()=>new Date().toISOString();const dt=s=>s?new Date(s).toLocaleString([],{dateStyle:"medium",timeStyle:"short"}):"—";
 const same=(s,d)=>s&&new Date(s).toDateString()==d.toDateString();
 // ---- UI helpers ------------------------------------------------------------------
-const I={home:"M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",list:"M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
+const I={check:"M20 6L9 17l-5-5",home:"M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",list:"M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
  map:"M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",bell:"M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
  user:"M20 21a8 8 0 1 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",plus:"M12 5v14M5 12h14",search:"M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
  pin:"M12 22s7-7.6 7-13a7 7 0 1 0-14 0c0 5.4 7 13 7 13zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",go:"M3 11l19-9-9 19-2-8-8-2z",
@@ -173,14 +173,31 @@ function locate({onFix,onDone,onFail,goal=20,wait=30000}){
  gpsTimer=setTimeout(finish,wait);
 }
 const accTxt=a=>a>1000?`±${(a/1000).toFixed(1)} km`:`±${Math.round(a)} m`;
-function gps(){const g=$("gps");if(!g)return;
- const show=(r,final)=>{const la=$("lat"),ln=$("lng"),st=$("gps");if(!la||!st)return stopGps();
-  la.value=r.coords.latitude.toFixed(6);ln.value=r.coords.longitude.toFixed(6);const a=r.coords.accuracy;pickTo(r.coords.latitude,r.coords.longitude,false,a);if(a<=1000)setMy(r);
-  st.innerHTML=final?`✔ GPS captured ${accTxt(a)} · ${dt(now())}`+(a>1000?`<br><b>Only approximate location.</b> Turn on “Precise location” for this site/app for an exact fix.`:a>50?" · weak signal, recapture in the open for better accuracy":"")
-   :`Improving GPS… ${accTxt(a)} <button class="btn" style="padding:4px 10px" onclick="stopGps();gpsStop()">Use this</button>`};
- window.gpsStop=()=>{const st=$("gps");if(st&&$("lat").value)st.textContent=`✔ GPS captured · ${dt(now())}`};
- g.textContent="Getting GPS… (allow location if asked)";
- locate({goal:15,wait:30000,onFix:r=>show(r,false),onDone:r=>show(r,true),onFail:m=>{const st=$("gps");if(st)st.innerHTML=`<b style="color:#c0392b">${esc(m)}</b> You can type the coordinates instead.`}})}
+// GPS capture for the add/edit form. Phones often answer first (or only) with an approximate
+// position from mobile towers / Wi-Fi; keep waiting for real GPS and say clearly how good the fix is.
+const GOOD=30,OK=200; // metres
+const isAndroid=()=>/Android/i.test(navigator.userAgent);
+function preciseHelp(){return LN()||nativeGeo()?`Android is giving the app only an approximate location. Open <b>Settings → Apps → Property Tracker → Permissions → Location</b> and turn on <b>Use precise location</b>. Also check <b>Settings → Location → Location services → Google Location Accuracy</b> is on.`
+ :isAndroid()?`Android is giving Chrome only an approximate location. Open <b>Settings → Apps → Chrome → Permissions → Location</b> and turn on <b>Use precise location</b>. Also check <b>Settings → Location → Location services → Google Location Accuracy</b> is on.`
+ :`This device is estimating its position from the network (computers usually have no GPS). Capture the location on your phone at the site, or place the pin on the map.`}
+function gps(){const g=$("gps");if(!g)return;let lastFix=null;const t0=Date.now();
+ const quality=a=>a<=GOOD?"good":a<=OK?"weak":"bad";
+ const put=(r,final)=>{const la=$("lat"),ln=$("lng"),st=$("gps");if(!la||!st)return stopGps();const c=r.coords,a=c.accuracy,q=quality(a);
+  la.value=c.latitude.toFixed(6);ln.value=c.longitude.toFixed(6);draft.acc=Math.round(a*10)/10;draft.lsrc="GPS";pickTo(c.latitude,c.longitude,false,a);if(a<=1000)setMy(r);
+  lastFix=r;const stuck=q=="bad"&&a>=1000&&(final||Date.now()-t0>15000); // still only an approximate position after 15 s
+  st.className=`gps ${q}`;
+  st.innerHTML=(final?(q=="good"?`${ic("check",16)} <b>GPS location captured</b> · ${accTxt(a)}`:q=="weak"?`${ic("info",16)} <b>Weak GPS</b> · ${accTxt(a)}. Usable, but move to open sky and tap Try again for better accuracy.`
+     :`${ic("info",16)} <b>Not accurate</b> · ${accTxt(a)}. This is an approximate position, not real GPS.`)
+    :q=="good"?`${ic("check",16)} GPS ${accTxt(a)}…`:`${ic("gps",16)} Waiting for GPS… now ${accTxt(a)}${a>OK?" (approximate)":""} · ${Math.round((Date.now()-t0)/1000)} s`)
+   +(stuck?`<div class="mut" style="margin-top:6px">${preciseHelp()}</div>`:"")
+   +`<div class="gpsbtns">${final?`<button type="button" class="btn sm" onclick="gps()">${ic("refresh",14)} Try again</button>`:q!="good"?`<button type="button" class="btn sm" onclick="stopGps();gpsDone()">Use this</button>`:""}${q!="good"?`<button type="button" class="btn sm" onclick="pinHelp()">${ic("pin",14)} Place pin on map</button>`:""}</div>`};
+ window.gpsDone=()=>{const st=$("gps");if(st&&$("lat").value){st.className=`gps ${quality(draft.acc||9999)}`;st.innerHTML=`${ic("check",16)} Location kept · ${accTxt(draft.acc||0)}`}};
+ g.className="gps";g.innerHTML=`${ic("gps",16)} Getting GPS… (allow location if asked; works best outdoors)`;
+ // accept a good fix straight away; otherwise keep listening up to 60 s for GPS to lock on
+ locate({goal:GOOD,wait:60000,onFix:r=>put(r,false),onDone:r=>put(r,true),onFail:m=>{const st=$("gps");if(st){st.className="gps bad";st.innerHTML=`<b>${esc(m)}</b> You can place the pin on the map or type the coordinates.<div class="gpsbtns"><button type="button" class="btn sm" onclick="gps()">${ic("refresh",14)} Try again</button></div>`}}});
+ // phones often go quiet instead of repeating an unchanged position: refresh the status every second while waiting
+ const tok=gpsTok,tick=setInterval(()=>{if(gpsTok!==tok||!$("gps")){clearInterval(tick);return}if(lastFix)put(lastFix,false)},1000)}
+function pinHelp(){stopGps();const m=$("pmap");if(m)m.scrollIntoView({behavior:"smooth",block:"center"});if(mapLayer!="sat")setLayer("sat");toast("Zoom in and tap the exact spot, or drag the pin")}
 function near(){toast("Finding your location…");locate({goal:100,wait:15000,onDone:g=>{setMy(g);db.props.sort((a,b)=>(distTo(a)??1e9)-(distTo(b)??1e9));render();toast("Sorted nearest first")},onFail:m=>alert(m)})}
 function me(silent){if(!silent)toast("Finding your location…");locate({goal:50,wait:15000,
  onFix:g=>{setMy(g);showMe(window.ptMap,g.coords,false);drawLinks()},
@@ -311,15 +328,17 @@ function pickMap(){if(window.ptPick){window.ptPick.remove();window.ptPick=null}i
  const ref=db.props.find(hasLoc);const m=window.ptPick=newMap("pmap",{scrollWheelZoom:false,tap:false});
  m.setView(has?[la,ln]:ref?[ref.lat,ref.lng]:[20.6,78.9],has?18:ref?13:5);
  if(has)pickTo(la,ln);
- m.on("click",e=>{stopGps();pickTo(e.latlng.lat,e.latlng.lng,true);gpsMsg("📍 Pin placed on the map")})}
+ m.on("click",e=>{stopGps();pickTo(e.latlng.lat,e.latlng.lng,true);pinSet("Pin placed on the map")})}
+function pinSet(t){if(draft){draft.lsrc="Map pin";draft.acc=""}const e=$("gps");if(e){e.className="gps good";e.innerHTML=`${ic("pin",16)} ${t}`}}
 function pickTo(la,ln,fromMap,acc){const m=window.ptPick;if(!m)return;
  if(!m._pin){m._pin=L.marker([la,ln],{draggable:true,icon:pinIcon("var(--ac)",true),autoPan:true}).addTo(m);
-  m._pin.on("dragend",()=>{stopGps();const q=m._pin.getLatLng();setLL(q.lat,q.lng);gpsMsg("📍 Pin moved by hand")})}
+  m._pin.on("dragend",()=>{stopGps();const q=m._pin.getLatLng();setLL(q.lat,q.lng);pinSet("Pin moved by hand")})}
  else m._pin.setLatLng([la,ln]);
  if(fromMap)setLL(la,ln);else m.setView([la,ln],Math.max(m.getZoom(),acc&&acc>200?15:18));
  if(m._acc)m.removeLayer(m._acc);m._acc=acc?L.circle([la,ln],{radius:acc,color:"#2b7cff",weight:1,fillOpacity:.1,interactive:false}).addTo(m):null}
 function setLL(la,ln){if($("lat"))$("lat").value=la.toFixed(6);if($("lng"))$("lng").value=ln.toFixed(6)}
 function gpsMsg(t){const e=$("gps");if(e)e.textContent=t}
+function typedLL(){if(draft){draft.lsrc="Typed";draft.acc=""}pickFromInputs()}
 function pickFromInputs(){const la=parseFloat($("lat").value),ln=parseFloat($("lng").value);if(isFinite(la)&&isFinite(ln))pickTo(la,ln)}
 // ---- reminder alerts -----------------------------------------------------------
 // Android app: native alarms scheduled on the phone (ring at the due time, even offline / app closed).
@@ -480,7 +499,7 @@ function propForm(p){p=p||{};const V=k=>esc(p[k]??"");
  return `<section class="card fs"><h3>${ic("pin",18)} Location</h3>
  <div id="gps" class="gps mut">${p.id?`Saved: ${p.lat||"—"}, ${p.lng||"—"}`:"Getting GPS…"}</div>
  <div class="pmapwrap"><div id="pmap" class="pmap"></div></div><div class="mut" style="margin:6px 0 2px">Drag the pin or tap the map to adjust the position.</div>${layerSeg()}
- <div class="row"><div><label for="lat">Latitude</label><input id="lat" type="number" step="any" inputmode="decimal" value="${V("lat")}" oninput="stopGps();pickFromInputs()"></div><div><label for="lng">Longitude</label><input id="lng" type="number" step="any" inputmode="decimal" value="${V("lng")}" oninput="stopGps();pickFromInputs()"></div></div>
+ <div class="row"><div><label for="lat">Latitude</label><input id="lat" type="number" step="any" inputmode="decimal" value="${V("lat")}" oninput="stopGps();typedLL()"></div><div><label for="lng">Longitude</label><input id="lng" type="number" step="any" inputmode="decimal" value="${V("lng")}" oninput="stopGps();typedLL()"></div></div>
  <button class="btn sm" type="button" style="margin-top:10px" onclick="gps()">${ic("gps",16)} ${p.id?"Capture GPS here":"Recapture GPS"}</button>
  <label for="addr">Address / Landmark</label><textarea id="addr" rows="2" placeholder="Door no., street, near temple / school / bus stop…">${V("addr")}</textarea>
  <div class="row"><div><label for="loc">Locality / village</label><input id="loc" value="${V("locality")}"></div><div><label for="dist">District</label><input id="dist" value="${V("district")}"></div></div></section>
@@ -495,7 +514,7 @@ function propForm(p){p=p||{};const V=k=>esc(p[k]??"");
  ${formExtra(p)}
  <section class="card fs"><h3>${ic("rupee",18)} Price</h3><div class="row"><div><label for="pr">Expected price (₹)</label><input id="pr" type="number" step="any" inputmode="decimal" value="${V("price")}" oninput="sizeHint()"></div><div><label for="pu">Price unit</label><select id="pu" onchange="sizeHint()">${opts(PUNITS,p.punit||"Total")}</select></div></div></section>
  <section class="card fs"><h3>${ic("note",18)} Notes</h3><textarea id="nt" rows="3" placeholder="Water, EB, approvals, neighbourhood…">${V("notes")}</textarea></section>`}
-function formVals(){const v=i=>(($(i)||{}).value||"").trim();return {name:v("stitle"),type:v("type"),addr:v("addr"),locality:v("loc"),district:v("dist"),lat:v("lat"),lng:v("lng"),area:v("area"),unit:v("unit"),len:v("len"),wid:v("wid"),road:v("road"),facing:v("face"),owner:v("own"),phone:v("tel"),price:v("pr"),punit:v("pu"),notes:v("nt"),source:v("src"),broker:v("brk"),bphone:v("bph"),comm:v("cmm"),assign:v("asn"),photos:draft.photos}}
+function formVals(){const v=i=>(($(i)||{}).value||"").trim();return {name:v("stitle"),type:v("type"),addr:v("addr"),locality:v("loc"),district:v("dist"),lat:v("lat"),lng:v("lng"),area:v("area"),unit:v("unit"),len:v("len"),wid:v("wid"),road:v("road"),facing:v("face"),owner:v("own"),phone:v("tel"),price:v("pr"),punit:v("pu"),notes:v("nt"),source:v("src"),broker:v("brk"),bphone:v("bph"),comm:v("cmm"),assign:v("asn"),...(draft.lsrc!==undefined?{acc:draft.acc,lsrc:draft.lsrc}:{}),photos:draft.photos}}
 // Live summary: area from length × width (feet), conversions and the total price.
 function sizeHint(){const e=$("szh");if(!e)return;const f=formVals(),x={...f,len:+f.len||0,wid:+f.wid||0,price:+f.price||0};
  const auto=!(+f.area)&&x.len&&x.wid;x.area=+f.area||(auto?x.len*x.wid/(U[f.unit]||1):0);const s=sqft(x);
@@ -506,11 +525,13 @@ function edit(){openS({t:"a"})}
 function drawAdd(){draft={photos:[],lat:"",lng:""};
  sheet(sheetHead("Add property","GPS is captured automatically")+propForm()+`<div class="savebar"><button class="btn" onclick="closeS()">Cancel</button><button class="btn p" onclick="saveP()">Save property</button></div>`);drawPh();sizeHint();pickMap();gps()}
 function photos(i){[...i.files].forEach(f=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const s=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);draft.photos.push({d:c.toDataURL("image/jpeg",.6),at:f.lastModified?new Date(f.lastModified).toISOString():now()});URL.revokeObjectURL(u);drawPh()};im.src=u})}
-function llOk(){const f=formVals();if(!f.lat&&!f.lng)return true;if((+f.lat==0&&+f.lng==0)||hasLoc(f))return true;toast("Location is not valid: latitude must be −90…90 and longitude −180…180. Capture GPS or move the pin.");return false}
+function llOk(){const f=formVals();if(!f.lat&&!f.lng)return true;
+ if(hasLoc(f)&&f.lsrc=="GPS"&&+f.acc>OK&&!confirm(`The location is only accurate to ${accTxt(+f.acc)}, so the pin may be far from the real site.\n\nSave anyway? (Cancel to try GPS again or place the pin on the map.)`))return false;
+ if((+f.lat==0&&+f.lng==0)||hasLoc(f))return true;toast("Location is not valid: latitude must be −90…90 and longitude −180…180. Capture GPS or move the pin.");return false}
 async function saveP(){if(busy)return;stopGps();if(!llOk())return;put(await write("save_property",{data:{...formVals(),status:"Visited"}}));if(!outbox.length)toast("Property saved");closeS()}
 function editP(id){if(P(id))openS({t:"e",id})}
 function drawEdit(id){const p=P(id);if(!p)return;draft={photos:[...p.photos],lat:p.lat,lng:p.lng};
- sheet(sheetHead(`Edit ${p.id}`,esc(p.name||""))+propForm(p)+`<div class="savebar"><button class="btn" onclick="history.back()">Cancel</button><button class="btn p" onclick="saveEdit('${id}')">Save changes</button></div>`);drawPh();sizeHint();pickMap()}
+ sheet(sheetHead(`Edit ${p.id}`,esc(p.name||""))+propForm(p)+`<div class="savebar"><button class="btn" onclick="history.back()">Cancel</button><button class="btn p" onclick="saveEdit('${id}')">Save changes</button></div>`);drawPh();sizeHint();pickMap();if(!hasLoc(p))gps();else{const e=$("gps");if(e)e.innerHTML=`${ic("pin",16)} Saved location${p.acc?` · ${accTxt(+p.acc)}`:""}${p.lsrc?` · ${esc(p.lsrc)}`:""}. Tap <b>Capture GPS here</b> to replace it.`}}
 async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;put(await write("save_property",{name:id,data:formVals()}));if(!outbox.length)toast("Changes saved");history.back()}
 function detail(id){if(P(id))openS({t:"d",id})}
 // ---- property page ------------------------------------------------------------------
@@ -531,7 +552,7 @@ function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
  +`<div class="meta">${pill(p.status)}<span class="mut">Added ${dt(p.created)}</span>${p.rating?`<span class="mut">· ${"★".repeat(p.rating)}</span>`:""}${p.assign?`<span class="chip sm">${ic("user",12)} ${esc(who(p.assign))}</span>`:""}</div>
  ${p.addr?`<div class="addr">${ic("pin",16)}<span>${esc(p.addr)}${p.locality?`, ${esc(p.locality)}`:""}${p.district?`, ${esc(p.district)}`:""}</span></div>`:""}
  <div class="actions">${hasLoc(p)?act("map","Maps",`window.open('${gm(p)}','_blank')`)+act("user","Street View",`window.open('${svUrl(p)}','_blank')`)+act("go","Navigate",`window.open('${navUrl(p)}','_blank')`):""}${p.phone?act("phone","Call",`window.location.href='tel:${esc(p.phone)}'`)+act("chat","WhatsApp",`window.open('https://wa.me/${esc(p.phone.replace(/\D/g,""))}','_blank')`):""}${act("image","Share card",`shareCard('${id}')`)}${p._local?"":act("note","Brochure",`window.open('/property-brochure?name=${encodeURIComponent(id)}','_blank')`)}${act("share","Share text",`share('${id}')`)}</div>
- ${hasLoc(p)?`<div class="card mapcard minimap"><div id="dmap"></div></div><div class="row tight" style="margin-top:8px;align-items:center"><div id="ddist" class="mut" style="flex:1">${distTo(p)!=null?`${ic("go",14)} <b>${kmTxt(distTo(p))}</b> from you`:""}</div>${p._local?"":`<button class="btn sm" onclick="openS({t:'b',id:'${id}'})">${ic("ruler",15)} ${p.boundary?"Edit":"Draw"} boundary</button>`}</div>${layerSeg()}`:(p.lat!==""&&p.lat!=null?`<div class="card" style="border-color:var(--danger)">${ic("info",14)} The saved location (${esc(p.lat)}, ${esc(p.lng)}) is not valid. Tap <b>Edit</b> and capture GPS again.</div>`:"")}
+ ${hasLoc(p)?`<div class="card mapcard minimap"><div id="dmap"></div></div><div class="row tight" style="margin-top:8px;align-items:center"><div style="flex:1"><div id="ddist" class="mut">${distTo(p)!=null?`${ic("go",14)} <b>${kmTxt(distTo(p))}</b> from you`:""}</div>${p.lsrc||p.acc?`<div class="mut ${+p.acc>OK?"overdue":""}">${ic("gps",13)} ${esc(p.lsrc||"GPS")}${p.acc?` · ${accTxt(+p.acc)}`:""}${+p.acc>OK?" · approximate, check the pin":""}</div>`:""}</div>${p._local?"":`<button class="btn sm" onclick="openS({t:'b',id:'${id}'})">${ic("ruler",15)} ${p.boundary?"Edit":"Draw"} boundary</button>`}</div>${layerSeg()}`:(p.lat!==""&&p.lat!=null?`<div class="card" style="border-color:var(--danger)">${ic("info",14)} The saved location (${esc(p.lat)}, ${esc(p.lng)}) is not valid. Tap <b>Edit</b> and capture GPS again.</div>`:"")}
  <div class="facts" style="margin-top:12px">${fact("Area",areaTxt(p),sqft(p)?`${fmt(Math.round(sqft(p)))} sq.ft · ${fmt(sqft(p)/435.6)} cent`:"")}${fact("Length × width",dims(p))}${fact("Road width",p.road?`${fmt(p.road)} ft`:"")}${fact("Facing",esc(p.facing))}${fact("Price",inr(total(p)),p.price&&p.punit!="Total"?`${inr(p.price)} ${(p.punit||"").toLowerCase()}`:"")}${fact("Per cent",inr(pc(p)),psf(p)?`${inr(psf(p))} per sq.ft`:"")}${p.barea?fact("Measured (boundary)",`${fmt(p.barea/435.6)} cent`,`${fmt(Math.round(p.barea))} sq.ft · ${fmt(p.barea/43560)} acre`):""}</div>
  ${p.barea&&!p._local?`<button class="btn sm" style="margin-top:8px" onclick="useMeasured('${id}')">${ic("ruler",14)} Use measured area as the area</button>`:""}
  ${p.owner||p.phone?`<h2>Owner</h2><div class="card"><b>${esc(p.owner||"—")}</b>${p.phone?` <span class="mut">· ${esc(p.phone)}</span>`:""}</div>`:""}

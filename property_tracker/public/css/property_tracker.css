@@ -342,3 +342,12 @@ b.mention { color: var(--ac); }
 .net.err { background: var(--danger); color: #fff; }
 .net .linkchip { background: rgb(255 255 255 / .2); color: inherit; }
 .item.pend { border-style: dashed; border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); }
+
+/* ---- GPS status ---- */
+.gps { flex-direction: column; align-items: flex-start; gap: 4px; line-height: 1.4; }
+.gps.good { background: color-mix(in srgb, #1f7a4d 12%, var(--card2)); }
+.gps.weak { background: color-mix(in srgb, var(--warn) 16%, var(--card2)); }
+.gps.bad { background: color-mix(in srgb, var(--danger) 14%, var(--card2)); color: var(--ink); }
+.gps .i { vertical-align: -3px; }
+.gpsbtns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.gpsbtns:empty { display: none; }
