@@ -305,6 +305,8 @@ def import_backup(data):
 		doc = frappe.new_doc("Property")
 		doc.status = old.status or "Visited"
 		apply_client(doc, old)
+		if not (-90 <= flt(doc.latitude) <= 90 and -180 <= flt(doc.longitude) <= 180):
+			doc.latitude = doc.longitude = None  # old app allowed any typed value
 		for v in old.visits or []:
 			doc.append("visits", {"visited_on": from_iso(v.get("at")) or now_datetime(), "note": v.get("note") or "-"})
 		history = old.history or []

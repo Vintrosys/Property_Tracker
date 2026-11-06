@@ -31,6 +31,16 @@ class IntegrationTestProperty(IntegrationTestCase):
 		doc.save()
 		self.assertEqual(doc.area, 2800)
 
+	def test_location_validation(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.make_property(latitude=212, longitude=121)
+		with self.assertRaises(frappe.ValidationError):
+			self.make_property(latitude=11.13, longitude=200)
+		doc = self.make_property(latitude=0, longitude=0)
+		self.assertFalse(doc.latitude)
+		doc = self.make_property(latitude=11.132551, longitude=77.780931)
+		self.assertEqual(doc.latitude, 11.132551)
+
 	def test_address(self):
 		doc = self.make_property(address="12, Temple Street, near Govt. School")
 		self.assertEqual(frappe.db.get_value("Property", doc.name, "address"), "12, Temple Street, near Govt. School")

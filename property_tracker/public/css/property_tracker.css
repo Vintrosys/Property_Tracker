@@ -273,3 +273,7 @@ td:first-child { color: var(--mut); font-weight: 600; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .sheet { animation: none; } .loading { animation: none; } }
 .steps { margin: 10px 0; padding-left: 20px; } .steps li { margin: 6px 0; } code { font-size: 12.5px; background: var(--card2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; word-break: break-all; }
+.leaflet-tooltip.dist { background: #2b7cff; color: #fff; border: 0; border-radius: 999px; padding: 2px 8px; font-weight: 700; font-size: 11.5px; box-shadow: 0 1px 4px rgb(0 0 0 / .3); }
+.leaflet-tooltip.dist::before { display: none; }
+.leaflet-tooltip.dist.on { font-size: 13px; padding: 3px 10px; }
+.pdist { color: #2b7cff; margin: 2px 0; }

@@ -13,9 +13,23 @@ PRICE_UNIT_SQFT = {"Per Sq.ft": 1, "Per Cent": 435.6, "Per Acre": 43560, "Per Gr
 
 class Property(Document):
 	def validate(self):
+		self.validate_location()
 		self.set_area()
 		self.set_prices()
 		self.track_status_change()
+
+	def validate_location(self):
+		lat, lng = self.latitude, self.longitude
+		if lat in (None, "") and lng in (None, ""):
+			return
+		if flt(lat) == 0 and flt(lng) == 0:  # "0, 0" means not captured
+			self.latitude = self.longitude = None
+			return
+		if not -90 <= flt(lat) <= 90 or not -180 <= flt(lng) <= 180 or lat in (None, "") or lng in (None, ""):
+			frappe.throw(
+				frappe._("Location {0}, {1} is not valid. Latitude must be between -90 and 90 and longitude between -180 and 180 (for example 11.132551, 77.780931).").format(lat, lng),
+				title=frappe._("Invalid location"),
+			)
 
 	def set_area(self):
 		"""Length, width and road width are in feet. With no area entered, use length × width

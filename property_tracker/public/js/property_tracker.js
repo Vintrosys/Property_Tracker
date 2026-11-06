@@ -55,6 +55,12 @@ const areaTxt=p=>p.area?`${fmt(p.area)} ${p.unit}`:"";
 const thumb=(p,s=84)=>p.photos&&p.photos[0]?`<img class="thumb" src="${esc(p.photos[0].d)}" alt="" loading="lazy">`:`<div class="thumb">${ic("image",28)}</div>`;
 const opts=(arr,v)=>arr.map(t=>`<option ${v==t?"selected":""}>${t}</option>`).join("");
 let prof={};
+// a usable location: both numbers, in range, and not the "0, 0" placeholder
+const hasLoc=p=>{if(!p||p.lat===""||p.lat==null||p.lng===""||p.lng==null)return false;const a=+p.lat,b=+p.lng;return isFinite(a)&&isFinite(b)&&Math.abs(a)<=90&&Math.abs(b)<=180&&!(a==0&&b==0)};
+let myPos=null; // last known position of this device {lat,lng,acc,at}
+const kmTxt=k=>k<1?`${Math.round(k*1000)} m`:`${k<10?k.toFixed(1):Math.round(k)} km`;
+const distTo=p=>myPos&&hasLoc(p)?hav(myPos.lat,myPos.lng,+p.lat,+p.lng):null;
+const setMy=g=>{myPos={lat:g.coords.latitude,lng:g.coords.longitude,acc:g.coords.accuracy,at:Date.now()}};
 const initials=()=>{const n=(prof.full_name||prof.email||"?").trim().split(/\s+/);return esc(((n[0]||"?")[0]+(n.length>1?n[n.length-1][0]:"")).toUpperCase())};
 const avatar=(s=36)=>prof.image?`<img class="av" src="${esc(prof.image)}" width="${s}" height="${s}" alt="" style="width:${s}px;height:${s}px">`:`<span class="av" style="width:${s}px;height:${s}px;font-size:${Math.round(s*.4)}px">${initials()}</span>`;
 const dueCount=()=>db.rem.filter(r=>!r.done&&new Date(r.due)<=new Date(Date.now()+864e5)).length;
@@ -102,14 +108,20 @@ function locate({onFix,onDone,onFail,goal=20,wait=30000}){
 const accTxt=a=>a>1000?`±${(a/1000).toFixed(1)} km`:`±${Math.round(a)} m`;
 function gps(){const g=$("gps");if(!g)return;
  const show=(r,final)=>{const la=$("lat"),ln=$("lng"),st=$("gps");if(!la||!st)return stopGps();
-  la.value=r.coords.latitude.toFixed(6);ln.value=r.coords.longitude.toFixed(6);const a=r.coords.accuracy;pickTo(r.coords.latitude,r.coords.longitude,false,a);
+  la.value=r.coords.latitude.toFixed(6);ln.value=r.coords.longitude.toFixed(6);const a=r.coords.accuracy;pickTo(r.coords.latitude,r.coords.longitude,false,a);if(a<=1000)setMy(r);
   st.innerHTML=final?`✔ GPS captured ${accTxt(a)} · ${dt(now())}`+(a>1000?`<br><b>Only approximate location.</b> Turn on “Precise location” for this site/app for an exact fix.`:a>50?" · weak signal, recapture in the open for better accuracy":"")
    :`Improving GPS… ${accTxt(a)} <button class="btn" style="padding:4px 10px" onclick="stopGps();gpsStop()">Use this</button>`};
  window.gpsStop=()=>{const st=$("gps");if(st&&$("lat").value)st.textContent=`✔ GPS captured · ${dt(now())}`};
  g.textContent="Getting GPS… (allow location if asked)";
  locate({goal:15,wait:30000,onFix:r=>show(r,false),onDone:r=>show(r,true),onFail:m=>{const st=$("gps");if(st)st.innerHTML=`<b style="color:#c0392b">${esc(m)}</b> You can type the coordinates instead.`}})}
-function near(){toast("Finding your location…");locate({goal:100,wait:15000,onDone:g=>{const d=p=>hav(g.coords.latitude,g.coords.longitude,p.lat,p.lng);db.props.sort((a,b)=>d(a)-d(b));render();toast("Sorted nearest first")},onFail:m=>alert(m)})}
-function me(){toast("Finding your location…");locate({goal:50,wait:15000,onFix:g=>showMe(window.ptMap,g.coords,false),onDone:g=>{showMe(window.ptMap,g.coords,true);toast(`You are here (${accTxt(g.coords.accuracy)})`)},onFail:m=>alert(m)})}
+function near(){toast("Finding your location…");locate({goal:100,wait:15000,onDone:g=>{setMy(g);db.props.sort((a,b)=>(distTo(a)??1e9)-(distTo(b)??1e9));render();toast("Sorted nearest first")},onFail:m=>alert(m)})}
+function me(silent){if(!silent)toast("Finding your location…");locate({goal:50,wait:15000,
+ onFix:g=>{setMy(g);showMe(window.ptMap,g.coords,false);drawLinks()},
+ onDone:g=>{setMy(g);showMe(window.ptMap,g.coords,false);drawLinks();if(!silent){fitPins(true);toast(`You are here (${accTxt(g.coords.accuracy)})`)}},
+ onFail:m=>{if(!silent)alert(m)}})}
+// Show this device on the map without asking: only if location permission was already given.
+async function locPermitted(){try{const N=nativeGeo();if(N){const s=await N.checkPermissions();return s.location=="granted"||s.coarseLocation=="granted"}if(!window.isSecureContext||!navigator.permissions)return false;return (await navigator.permissions.query({name:"geolocation"})).state=="granted"}catch(e){return false}}
+async function autoLocate(m){if(myPos){showMe(m,{latitude:myPos.lat,longitude:myPos.lng,accuracy:myPos.acc},false);drawLinks()}if((!myPos||Date.now()-myPos.at>120000)&&await locPermitted())me(true)}
 function nav(v,f=""){const s=st();view=v;flt=f;
  if(v=="home"){if(s.d>0)return history.go(-s.d);setState({v,f,d:0},true)}
  else setState({v,f,d:1},s.d>0); // Home→tab adds an entry; tab→tab replaces it, so Back always returns Home
@@ -154,7 +166,7 @@ function home(){const t=new Date(),wk=new Date(Date.now()-6048e5),c=f=>db.props.
  <h2>By location</h2>${Object.keys(loc).length?`<div class="chips">${Object.entries(loc).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="chip">${ic("pin",14)} ${esc(k)} <small>${v}</small></span>`).join("")}</div>`:'<div class="card mut">No data yet</div>'}
  <h2>Recent visits</h2><div class="items">${db.props.slice(-6).reverse().map(item).join("")||`<div class="card empty">${ic("pin",32)}<div>Tap <b>Add property</b> at your first site.</div></div>`}</div>`}
 function item(p){const sub=[p.name?p.id:"",p.locality||p.type].filter(Boolean).map(esc).join(" · ");
- return `<div class="card item" onclick="detail('${p.id}')">${thumb(p)}<div class="it"><div class="t1">${esc(p.name||p.id)}</div><div class="t2">${pill(p.status)}<span class="mut ell">${sub}</span></div>${p.addr?`<div class="mut ell">${ic("pin",13)} ${esc(p.addr)}</div>`:""}<div class="t3"><b>${inr(total(p))}</b><span class="mut">${[areaTxt(p),dims(p)].filter(Boolean).join(" · ")}</span></div></div></div>`}
+ return `<div class="card item" onclick="detail('${p.id}')">${thumb(p)}<div class="it"><div class="t1">${esc(p.name||p.id)}</div><div class="t2">${pill(p.status)}<span class="mut ell">${sub}</span></div>${p.addr?`<div class="mut ell">${ic("pin",13)} ${esc(p.addr)}</div>`:""}<div class="t3"><b>${inr(total(p))}</b><span class="mut">${[areaTxt(p),dims(p),distTo(p)!=null?`${kmTxt(distTo(p))} away`:""].filter(Boolean).join(" · ")}</span></div></div></div>`}
 const matchQ=(p,s)=>!s||JSON.stringify([p.id,p.name,p.locality,p.district,p.addr,p.owner,p.phone,p.type]).toLowerCase().includes(s.toLowerCase());
 function listItems(){const r=db.props.filter(p=>(!flt||p.status==flt)&&matchQ(p,q)).reverse();
  return r.map(p=>cmpMode?`<div class="selrow"><input type="checkbox" aria-label="Select ${p.id} to compare" ${cmp.includes(p.id)?"checked":""} onchange="tgl('${p.id}')">${item(p)}</div>`:item(p)).join("")||`<div class="card empty">${ic("search",28)}<div>No properties match.</div></div>`}
@@ -167,7 +179,7 @@ function list(){const n={};db.props.forEach(p=>n[p.status]=(n[p.status]||0)+1);
 let cmpMode=false;
 function tgl(id){cmp=cmp.includes(id)?cmp.filter(x=>x!=id):[...cmp,id].slice(-5);const b=$("cmpbtn");if(b)b.textContent=`Compare (${cmp.length})`}
 function hav(a,b,c,d){if(c==null||c==="")return 1e9;const r=x=>x*Math.PI/180,h=Math.sin(r(c-a)/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(r(d-b)/2)**2;return 12742*Math.asin(Math.sqrt(h))}
-function map(){const ps=db.props.filter(p=>p.lat!==""&&p.lat!=null);
+function map(){const ps=db.props.filter(hasLoc);
  if(!ps.length)return head("Map")+`<div class="card empty">${ic("map",32)}<div>No located properties yet. Capture GPS when you add a property.</div></div>`;
  const f=flt;return head("Map",`${ps.length} located`)+`<div class="search">${ic("search",18)}<input type="search" placeholder="Search pins…" value="${esc(mq)}" oninput="mq=this.value;updateMap()"></div>
  <div class="chips"><button class="chip ${!f?"on":""}" onclick="setF('')">All</button>${["Visited","Shortlisted","Negotiating","Purchased","Rejected"].map(s=>`<button class="chip ${f==s?"on":""}" style="--c:${col(s)}" onclick="setF('${s}')"><i class="dot"></i>${s}</button>`).join("")}</div>
@@ -194,23 +206,39 @@ function newMap(id,o={}){const m=L.map(id,{zoomControl:true,attributionControl:t
 const pinIcon=(c,big)=>L.divIcon({className:"",html:`<span class="mk${big?" big":""}" style="--c:${c}"></span>`,iconSize:big?[34,34]:[28,28],iconAnchor:big?[17,34]:[14,28],popupAnchor:[0,big?-32:-26]});
 const svUrl=p=>`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${p.lat},${p.lng}`;
 const navUrl=p=>`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
-function popup(p){return `<div class="pop">${p.photos&&p.photos[0]?`<img src="${esc(p.photos[0].d)}" alt="">`:""}<b>${esc(p.name||p.id)}</b><div class="pmeta">${pill(p.status)}<span class="mut">${p.id}</span></div>${p.addr?`<div class="mut">${esc(p.addr)}</div>`:""}<div class="pprice"><b>${inr(total(p))}</b> <span class="mut">${[areaTxt(p),dims(p)].filter(Boolean).join(" · ")}</span></div>
+function popup(p){return `<div class="pop">${p.photos&&p.photos[0]?`<img src="${esc(p.photos[0].d)}" alt="">`:""}<b>${esc(p.name||p.id)}</b><div class="pmeta">${pill(p.status)}<span class="mut">${p.id}</span></div>${p.addr?`<div class="mut">${esc(p.addr)}</div>`:""}${distTo(p)!=null?`<div class="pdist">${ic("go",13)} <b>${kmTxt(distTo(p))}</b> from you</div>`:""}<div class="pprice"><b>${inr(total(p))}</b> <span class="mut">${[areaTxt(p),dims(p)].filter(Boolean).join(" · ")}</span></div>
  <div class="pact"><button class="btn sm p" onclick="detail('${p.id}')">Details</button><a class="btn sm" href="${navUrl(p)}" target="_blank" rel="noopener">${ic("go",14)} Go</a><a class="btn sm" href="${svUrl(p)}" target="_blank" rel="noopener">${ic("user",14)} Street View</a></div></div>`}
 // "You are here" dot with accuracy circle
 function showMe(m,c,fly){if(!m)return;const ll=[c.latitude,c.longitude];if(m._me){m._me.setLatLng(ll);m._acc.setLatLng(ll).setRadius(c.accuracy)}else{m._acc=L.circle(ll,{radius:c.accuracy,color:"#2b7cff",weight:1,fillOpacity:.12,interactive:false}).addTo(m);m._me=L.marker(ll,{icon:L.divIcon({className:"",html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]}),interactive:false,zIndexOffset:1000}).addTo(m)}if(fly)m.flyTo(ll,Math.max(m.getZoom()||0,16),{duration:.8})}
-function initMap(){const m=$("lmap");if(!m)return;if(window.ptMap){window.ptMap.remove();window.ptMap=null}window.ptMap=newMap('lmap');window.ptMap.setView([20.6,78.9],5);updateMap(true)}
+function initMap(){const m=$("lmap");if(!m)return;if(window.ptMap){window.ptMap.remove();window.ptMap=null}window.ptMap=newMap('lmap');window.ptMap.setView([20.6,78.9],5);updateMap(true);autoLocate(window.ptMap)}
 function updateMap(fit){const M=window.ptMap;if(!M)return;if(window.ptMarkers)M.removeLayer(window.ptMarkers);
- const ps=db.props.filter(p=>p.lat!==""&&p.lat!=null&&(!flt||p.status==flt)&&matchQ(p,mq));
- window.ptMarkers=L.featureGroup(ps.map(p=>L.marker([p.lat,p.lng],{icon:pinIcon(col(p.status)),title:p.name||p.id,riseOnHover:true}).bindPopup(popup(p),{maxWidth:280,minWidth:230}))).addTo(M);
- if(fit&&ps.length)M.fitBounds(window.ptMarkers.getBounds(),{padding:[40,40],maxZoom:17})}
-function fitAll(){const M=window.ptMap;if(M&&window.ptMarkers&&window.ptMarkers.getLayers().length)M.fitBounds(window.ptMarkers.getBounds(),{padding:[40,40],maxZoom:17})}
+ const ps=db.props.filter(p=>hasLoc(p)&&(!flt||p.status==flt)&&matchQ(p,mq));
+ window.ptMarkers=L.featureGroup(ps.map(p=>{const mk=L.marker([+p.lat,+p.lng],{icon:pinIcon(col(p.status)),title:p.name||p.id,riseOnHover:true}).bindPopup(()=>popup(p),{maxWidth:280,minWidth:230});
+  mk._pid=p.id;mk.on("popupopen",()=>{M._sel=p.id;drawLinks()});mk.on("popupclose",()=>{if(M._sel==p.id){M._sel=null;drawLinks()}});return mk})).addTo(M);
+ if(fit)fitPins(false);drawLinks()}
+// Zoom straight to the pins (street level for one pin); optionally include this device.
+function fitPins(withMe){const M=window.ptMap;if(!M)return;const pts=window.ptMarkers?window.ptMarkers.getLayers().map(m=>m.getLatLng()):[];
+ if(withMe&&myPos)pts.push(L.latLng(myPos.lat,myPos.lng));if(!pts.length)return;
+ if(pts.length==1)M.setView(pts[0],17);else M.fitBounds(L.latLngBounds(pts),{padding:[50,50],maxZoom:17})}
+// Lines from this device to the pins, labelled with the distance. All pins when there are few, else the selected one.
+function drawLinks(){const M=window.ptMap;if(!M)return;if(M._links){M.removeLayer(M._links);M._links=null}
+ if(!myPos||!window.ptMarkers)return;const ms=window.ptMarkers.getLayers(),few=ms.length<=10;
+ const show=ms.filter(m=>few||m._pid==M._sel);if(!show.length)return;
+ M._links=L.layerGroup(show.map(m=>{const ll=m.getLatLng(),on=m._pid==M._sel,d=hav(myPos.lat,myPos.lng,ll.lat,ll.lng);
+  return L.polyline([[myPos.lat,myPos.lng],ll],{color:"#2b7cff",weight:on?4:2.5,opacity:on?.95:.55,dashArray:on?null:"6 8",interactive:false})
+   .bindTooltip(kmTxt(d),{permanent:true,direction:"center",className:"dist"+(on?" on":"")})})).addTo(M)}
+function fitAll(){fitPins(!!myPos)}
 // Property page: small map of the site
-function miniMap(p){if(window.ptMini){window.ptMini.remove();window.ptMini=null}if(!$("dmap")||!p.lat)return;
- const m=window.ptMini=newMap("dmap",{scrollWheelZoom:false,dragging:!L.Browser.mobile,tap:false});m.setView([p.lat,p.lng],17);L.marker([p.lat,p.lng],{icon:pinIcon(col(p.status),true)}).addTo(m)}
+function miniMap(p){if(window.ptMini){window.ptMini.remove();window.ptMini=null}if(!$("dmap")||!hasLoc(p))return;
+ const ll=[+p.lat,+p.lng],m=window.ptMini=newMap("dmap",{scrollWheelZoom:false,dragging:!L.Browser.mobile,tap:false});m.setView(ll,17);L.marker(ll,{icon:pinIcon(col(p.status),true)}).addTo(m);
+ const link=()=>{if(!myPos||window.ptMini!==m)return;const d=distTo(p);showMe(m,{latitude:myPos.lat,longitude:myPos.lng,accuracy:myPos.acc},false);
+  if(m._line)m.removeLayer(m._line);m._line=L.polyline([[myPos.lat,myPos.lng],ll],{color:"#2b7cff",weight:3,opacity:.8,dashArray:"6 8",interactive:false}).bindTooltip(kmTxt(d),{permanent:true,direction:"center",className:"dist"}).addTo(m);
+  if(d<=5)m.fitBounds(L.latLngBounds([ll,[myPos.lat,myPos.lng]]),{padding:[30,30],maxZoom:17});const e=$("ddist");if(e)e.innerHTML=`${ic("go",14)} <b>${kmTxt(d)}</b> from you`};
+ link();if(!myPos||Date.now()-myPos.at>120000)locPermitted().then(ok=>ok&&locate({goal:100,wait:12000,onFix:g=>{setMy(g);link()},onDone:g=>{setMy(g);link()},onFail:()=>{}}))}
 // Add/edit form: draggable pin to fine-tune the GPS position (or tap the map to place it)
 function pickMap(){if(window.ptPick){window.ptPick.remove();window.ptPick=null}if(!$("pmap"))return;
  const la=parseFloat($("lat").value),ln=parseFloat($("lng").value),has=isFinite(la)&&isFinite(ln);
- const ref=db.props.find(p=>p.lat);const m=window.ptPick=newMap("pmap",{scrollWheelZoom:false,tap:false});
+ const ref=db.props.find(hasLoc);const m=window.ptPick=newMap("pmap",{scrollWheelZoom:false,tap:false});
  m.setView(has?[la,ln]:ref?[ref.lat,ref.lng]:[20.6,78.9],has?18:ref?13:5);
  if(has)pickTo(la,ln);
  m.on("click",e=>{stopGps();pickTo(e.latlng.lat,e.latlng.lng,true);gpsMsg("📍 Pin placed on the map")})}
@@ -370,11 +398,12 @@ function edit(){openS({t:"a"})}
 function drawAdd(){draft={photos:[],lat:"",lng:""};
  sheet(sheetHead("Add property","GPS is captured automatically")+propForm()+`<div class="savebar"><button class="btn" onclick="closeS()">Cancel</button><button class="btn p" onclick="saveP()">Save property</button></div>`);drawPh();sizeHint();pickMap();gps()}
 function photos(i){[...i.files].forEach(f=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const s=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);draft.photos.push({d:c.toDataURL("image/jpeg",.6),at:f.lastModified?new Date(f.lastModified).toISOString():now()});URL.revokeObjectURL(u);drawPh()};im.src=u})}
-async function saveP(){if(busy)return;stopGps();put(await api("save_property",{data:{...formVals(),status:"Visited"}}));toast("Property saved");closeS()}
+function llOk(){const f=formVals();if(!f.lat&&!f.lng)return true;if((+f.lat==0&&+f.lng==0)||hasLoc(f))return true;toast("Location is not valid: latitude must be −90…90 and longitude −180…180. Capture GPS or move the pin.");return false}
+async function saveP(){if(busy)return;stopGps();if(!llOk())return;put(await api("save_property",{data:{...formVals(),status:"Visited"}}));toast("Property saved");closeS()}
 function editP(id){if(P(id))openS({t:"e",id})}
 function drawEdit(id){const p=P(id);if(!p)return;draft={photos:[...p.photos],lat:p.lat,lng:p.lng};
  sheet(sheetHead(`Edit ${p.id}`,esc(p.name||""))+propForm(p)+`<div class="savebar"><button class="btn" onclick="history.back()">Cancel</button><button class="btn p" onclick="saveEdit('${id}')">Save changes</button></div>`);drawPh();sizeHint();pickMap()}
-async function saveEdit(id){if(busy||!P(id))return;stopGps();put(await api("save_property",{name:id,data:formVals()}));toast("Changes saved");history.back()}
+async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;put(await api("save_property",{name:id,data:formVals()}));toast("Changes saved");history.back()}
 function detail(id){if(P(id))openS({t:"d",id})}
 function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
  const fact=(l,v,s="")=>`<div><span>${l}</span><b>${v||"—"}</b>${s?`<small>${s}</small>`:""}</div>`;
@@ -383,8 +412,8 @@ function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
  +(ph.length?`<div class="gallery">${ph.map(x=>`<img class="${ph.length==1?"one":""}" src="${esc(x.d)}" alt="" loading="lazy">`).join("")}</div>`:`<div class="hero-ph">${ic("image",40)}</div>`)
  +`<div class="meta">${pill(p.status)}<span class="mut">Added ${dt(p.created)}</span>${p.rating?`<span class="mut">· ${"★".repeat(p.rating)}</span>`:""}</div>
  ${p.addr?`<div class="addr">${ic("pin",16)}<span>${esc(p.addr)}${p.locality?`, ${esc(p.locality)}`:""}${p.district?`, ${esc(p.district)}`:""}</span></div>`:""}
- <div class="actions">${p.lat?act("map","Maps",`window.open('${gm(p)}','_blank')`)+act("user","Street View",`window.open('${svUrl(p)}','_blank')`)+act("go","Navigate",`window.open('https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}','_blank')`):""}${p.phone?act("phone","Call",`window.location.href='tel:${esc(p.phone)}'`)+act("chat","WhatsApp",`window.open('https://wa.me/${esc(p.phone.replace(/\D/g,""))}','_blank')`):""}${act("share","Share",`share('${id}')`)}${p.lat?act("copy","Copy pin",`navigator.clipboard&&navigator.clipboard.writeText(gm(P('${id}'))).then(()=>toast('Location copied'))`):""}</div>
- ${p.lat?`<div class="card mapcard minimap"><div id="dmap"></div></div>${layerSeg()}`:""}
+ <div class="actions">${hasLoc(p)?act("map","Maps",`window.open('${gm(p)}','_blank')`)+act("user","Street View",`window.open('${svUrl(p)}','_blank')`)+act("go","Navigate",`window.open('https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}','_blank')`):""}${p.phone?act("phone","Call",`window.location.href='tel:${esc(p.phone)}'`)+act("chat","WhatsApp",`window.open('https://wa.me/${esc(p.phone.replace(/\D/g,""))}','_blank')`):""}${act("share","Share",`share('${id}')`)}${hasLoc(p)?act("copy","Copy pin",`navigator.clipboard&&navigator.clipboard.writeText(gm(P('${id}'))).then(()=>toast('Location copied'))`):""}</div>
+ ${hasLoc(p)?`<div class="card mapcard minimap"><div id="dmap"></div></div><div id="ddist" class="mut" style="margin-top:8px">${distTo(p)!=null?`${ic("go",14)} <b>${kmTxt(distTo(p))}</b> from you`:""}</div>${layerSeg()}`:(p.lat!==""&&p.lat!=null?`<div class="card" style="border-color:var(--danger)">${ic("info",14)} The saved location (${esc(p.lat)}, ${esc(p.lng)}) is not valid. Tap <b>Edit</b> and capture GPS again.</div>`:"")}
  <div class="facts" style="margin-top:12px">${fact("Area",areaTxt(p),sqft(p)?`${fmt(Math.round(sqft(p)))} sq.ft · ${fmt(sqft(p)/435.6)} cent`:"")}${fact("Length × width",dims(p))}${fact("Road width",p.road?`${fmt(p.road)} ft`:"")}${fact("Facing",esc(p.facing))}${fact("Price",inr(total(p)),p.price&&p.punit!="Total"?`${inr(p.price)} ${p.punit.toLowerCase()}`:"")}${fact("Per cent",inr(pc(p)),psf(p)?`${inr(psf(p))} per sq.ft`:"")}</div>
  ${p.owner||p.phone?`<h2>Owner</h2><div class="card"><b>${esc(p.owner||"—")}</b>${p.phone?` <span class="mut">· ${esc(p.phone)}</span>`:""}</div>`:""}
  ${p.notes?`<h2>Notes</h2><div class="card" style="white-space:pre-wrap">${esc(p.notes)}</div>`:""}
