@@ -351,3 +351,15 @@ b.mention { color: var(--ac); }
 .gps .i { vertical-align: -3px; }
 .gpsbtns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .gpsbtns:empty { display: none; }
+
+/* ---- videos ---- */
+.vid + .vid { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.vid video { width: 100%; max-height: 60vh; border-radius: 12px; background: #000; display: block; }
+.vmeta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.vmeta .cap { flex: 1; margin: 0; }
+.vmeta .mut { white-space: nowrap; font-size: 12px; }
+.vup { margin: 6px 0 10px; }
+.vup .bar { height: 8px; border-radius: 4px; background: var(--card2); overflow: hidden; border: 1px solid var(--line); }
+.vup .bar i { display: block; height: 100%; width: 0; background: var(--ac); transition: width .2s; }
+
+.net[hidden], .mlist[hidden], .vup[hidden] { display: none; } /* [hidden] must win over display:flex */

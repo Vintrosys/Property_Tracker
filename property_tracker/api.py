@@ -85,7 +85,7 @@ def _blank_zero(value):
 	return value if value else ""
 
 
-def to_client(doc, photos=(), visits=(), history=(), docs=(), prices=()):
+def to_client(doc, photos=(), visits=(), history=(), docs=(), prices=(), videos=()):
 	p = {"id": doc.name, "status": doc.status, "created": to_iso(doc.creation), "by": doc.owner, "modified": to_iso(doc.modified)}
 	for key, field in FIELD_MAP.items():
 		value = doc.get(field)
@@ -96,6 +96,7 @@ def to_client(doc, photos=(), visits=(), history=(), docs=(), prices=()):
 		p["boundary"] = None
 	p["barea"] = flt(doc.boundary_area_sqft) or ""
 	p["photos"] = [{"d": r.image, "at": to_iso(r.taken_on), "c": r.caption or ""} for r in photos]
+	p["videos"] = [{"i": r.idx, "d": r.video, "c": r.caption or "", "at": to_iso(r.taken_on), "mb": flt(r.size_mb)} for r in videos]
 	p["docs"] = [
 		{"i": r.idx, "type": r.doc_type, "status": r.status or "Pending", "file": r.file or "", "note": r.note or "", "at": to_iso(r.updated_on)}
 		for r in docs
@@ -113,7 +114,7 @@ def to_client(doc, photos=(), visits=(), history=(), docs=(), prices=()):
 
 
 def doc_to_client(doc):
-	return to_client(doc, doc.photos, doc.visits, doc.status_history, doc.documents, doc.price_history)
+	return to_client(doc, doc.photos, doc.visits, doc.status_history, doc.documents, doc.price_history, doc.videos)
 
 
 def apply_client(doc, data):
@@ -194,6 +195,7 @@ def get_data():
 	history = children("Property Status Log", "idx asc")
 	docs = children("Property Document", "idx asc")
 	prices = children("Property Price Log", "logged_on asc")
+	videos = children("Property Video", "idx asc")
 
 	reminders = frappe.get_list(
 		"Property Reminder",
@@ -211,6 +213,7 @@ def get_data():
 				history.get(p.name, ()),
 				docs.get(p.name, ()),
 				prices.get(p.name, ()),
+				videos.get(p.name, ()),
 			)
 			for p in props
 		],
@@ -322,6 +325,57 @@ def update_deal(name, negotiated_price=None, rating=None):
 
 
 DOC_STATUSES = ("Pending", "Received", "Verified", "Issue")
+MAX_VIDEO_MB = 20
+VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "3gp", "3gpp", "m4v", "mkv", "avi"}
+
+
+@frappe.whitelist(methods=["POST"])
+def add_video(name, file_url, caption=None):
+	"""Attach an uploaded video (via /api/method/upload_file) to the property. Max 20 MB."""
+	doc = _get(name)
+	file = frappe.db.get_value(
+		"File",
+		{"file_url": file_url, "attached_to_doctype": "Property", "attached_to_name": name},
+		["name", "file_name", "file_size"],
+		as_dict=True,
+	)
+	if not file:
+		frappe.throw(_("Upload the video first."))
+	ext = (file.file_name or "").rsplit(".", 1)[-1].lower()
+	if ext not in VIDEO_EXTENSIONS:
+		frappe.delete_doc("File", file.name, ignore_permissions=True)
+		frappe.throw(_("That file is not a video (allowed: {0}).").format(", ".join(sorted(VIDEO_EXTENSIONS))))
+	size_mb = flt(file.file_size) / 1048576
+	if size_mb > MAX_VIDEO_MB:
+		frappe.delete_doc("File", file.name, ignore_permissions=True)
+		frappe.throw(_("The video is {0} MB. The limit is {1} MB.").format(round(size_mb, 1), MAX_VIDEO_MB))
+	doc.append("videos", {"video": file_url, "caption": (caption or "")[:140], "taken_on": now_datetime(), "size_mb": round(size_mb, 1)})
+	doc.save()
+	return doc_to_client(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def update_video(name, row, caption=None):
+	doc = _get(name)
+	for v in doc.videos:
+		if v.idx == cint(row):
+			v.caption = (caption or "")[:140]
+	doc.save()
+	return doc_to_client(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def remove_video(name, row):
+	doc = _get(name)
+	keep, gone = [], []
+	for v in doc.videos:
+		(gone if v.idx == cint(row) else keep).append(v)
+	doc.set("videos", keep)
+	doc.save()
+	for v in gone:
+		for f in frappe.get_all("File", filters={"file_url": v.video, "attached_to_name": name}, pluck="name"):
+			frappe.delete_doc("File", f, ignore_permissions=True)
+	return doc_to_client(doc)
 PRICE_KINDS = ("Asking", "Offered", "Counter", "Negotiated", "Final")
 
 

@@ -58,6 +58,8 @@
   "notes",
   "section_photos",
   "photos",
+  "section_videos",
+  "videos",
   "section_documents",
   "documents",
   "section_visits",
@@ -378,6 +380,17 @@
    "options": "Property Photo"
   },
   {
+   "fieldname": "section_videos",
+   "fieldtype": "Section Break",
+   "label": "Videos"
+  },
+  {
+   "fieldname": "videos",
+   "fieldtype": "Table",
+   "label": "Videos",
+   "options": "Property Video"
+  },
+  {
    "fieldname": "section_documents",
    "fieldtype": "Section Break",
    "label": "Documents"
@@ -414,7 +427,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-07 18:00:00.000000",
+ "modified": "2026-11-08 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Property Tracker",
  "name": "Property",

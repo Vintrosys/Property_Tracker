@@ -156,3 +156,32 @@ class IntegrationTestPropertyFeatures(IntegrationTestCase):
 		self.assertTrue(frappe.db.exists("Notification Log", {"for_user": user, "document_name": p["id"], "type": "Mention"}))
 		comments = api.delete_comment(p["id"], comments[-1]["k"])
 		self.assertEqual(comments, [])
+
+
+class IntegrationTestPropertyVideos(IntegrationTestCase):
+	def upload(self, prop, name, content):
+		return frappe.get_doc(
+			{"doctype": "File", "file_name": name, "attached_to_doctype": "Property", "attached_to_name": prop, "is_private": 1, "content": content}
+		).insert()
+
+	def test_add_caption_remove_video(self):
+		p = api.save_property({"name": "Video plot"})
+		f = self.upload(p["id"], "walkthrough.mp4", b"\x00\x00\x00\x18ftypmp42" + b"0" * 2048)
+		p = api.add_video(p["id"], f.file_url, "Walk-through")
+		self.assertEqual([(v["c"], v["d"]) for v in p["videos"]], [("Walk-through", f.file_url)])
+		p = api.update_video(p["id"], p["videos"][0]["i"], "Road side")
+		self.assertEqual(p["videos"][0]["c"], "Road side")
+		p = api.remove_video(p["id"], p["videos"][0]["i"])
+		self.assertEqual(p["videos"], [])
+		self.assertFalse(frappe.db.exists("File", f.name))
+
+	def test_rejects_non_video_and_too_large(self):
+		p = api.save_property({"name": "Video plot 2"})
+		f = self.upload(p["id"], "notes.txt", b"hello")
+		with self.assertRaises(frappe.ValidationError):
+			api.add_video(p["id"], f.file_url)
+		self.assertFalse(frappe.db.exists("File", f.name))
+		f = self.upload(p["id"], "big.mp4", b"0" * 2048)
+		frappe.db.set_value("File", f.name, "file_size", 21 * 1048576)
+		with self.assertRaises(frappe.ValidationError):
+			api.add_video(p["id"], f.file_url)

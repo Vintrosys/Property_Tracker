@@ -534,6 +534,28 @@ function drawEdit(id){const p=P(id);if(!p)return;draft={photos:[...p.photos],lat
  sheet(sheetHead(`Edit ${p.id}`,esc(p.name||""))+propForm(p)+`<div class="savebar"><button class="btn" onclick="history.back()">Cancel</button><button class="btn p" onclick="saveEdit('${id}')">Save changes</button></div>`);drawPh();sizeHint();pickMap();if(!hasLoc(p))gps();else{const e=$("gps");if(e)e.innerHTML=`${ic("pin",16)} Saved location${p.acc?` · ${accTxt(+p.acc)}`:""}${p.lsrc?` · ${esc(p.lsrc)}`:""}. Tap <b>Capture GPS here</b> to replace it.`}}
 async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;put(await write("save_property",{name:id,data:formVals()}));if(!outbox.length)toast("Changes saved");history.back()}
 function detail(id){if(P(id))openS({t:"d",id})}
+// ---- videos (up to 20 MB each; online only) ----------------------------------------------
+const MAX_VIDEO_MB=20;
+function videoSection(p){const vs=p.videos||[];
+ return `<div class="sechead"><h2>Videos (${vs.length})</h2></div><section class="card">${vs.map(v=>`<div class="vid"><video src="${esc(v.d)}" controls preload="metadata" playsinline></video>
+  <div class="vmeta"><input class="cap" value="${esc(v.c)}" placeholder="Caption" aria-label="Video caption" onchange="videoCaption('${p.id}',${v.i},this.value)"><span class="mut">${v.mb?`${v.mb} MB · `:""}${dt(v.at)}</span><button class="iconbtn sm" onclick="videoRemove('${p.id}',${v.i})" aria-label="Delete video">${ic("trash",15)}</button></div></div>`).join("")}
+  <div id="vup" class="vup" hidden><div class="bar"><i id="vbar"></i></div><span id="vpct" class="mut"></span></div>
+  <label class="btn" style="margin-top:${vs.length?10:0}px">${ic("camera",16)} Add video<input type="file" accept="video/*" hidden onchange="videoAdd('${p.id}',this)"></label>
+  <div class="mut" style="margin-top:6px">Up to ${MAX_VIDEO_MB} MB each, which is about 30–40 seconds at 720p. Record short clips or trim long ones first.</div></section>`}
+function uploadWithProgress(file,id,onp){return new Promise((res,rej)=>{if(isOffline||!navigator.onLine)return rej(new Error("You're offline. Add videos when you're back online."));
+ const f=new FormData();f.append("file",file,file.name||"video.mp4");f.append("is_private","1");f.append("doctype","Property");f.append("docname",id);f.append("folder","Home/Attachments");f.append("optimize","0");
+ const x=new XMLHttpRequest();x.open("POST","/api/method/upload_file");x.setRequestHeader("X-Frappe-CSRF-Token",window.csrf_token||"");x.setRequestHeader("Accept","application/json");
+ x.upload.onprogress=e=>{if(e.lengthComputable)onp(e.loaded/e.total)};x.onerror=()=>rej(new Error("Upload failed. Check the connection and try again."));
+ x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}if(x.status>=200&&x.status<300&&j.message)res(j.message.file_url);else rej(new Error(x.status==413?`The file is too large for the server. Ask the admin to raise the upload limit (Frappe "Max File Size").`:serverErr(x.status,j)||"Upload failed"))};x.send(f)})}
+async function videoAdd(id,input){const file=input.files[0];input.value="";if(!file)return;
+ if(!/^video\//.test(file.type)&&!/\.(mp4|mov|webm|3gpp?|m4v|mkv|avi)$/i.test(file.name))return toast("That file is not a video");
+ const mb=file.size/1048576;if(mb>MAX_VIDEO_MB)return alert(`This video is ${mb.toFixed(1)} MB. The limit is ${MAX_VIDEO_MB} MB.\n\nRecord a shorter clip, use a lower camera resolution (720p), or trim it first.`);
+ const box=$("vup"),bar=$("vbar"),pct=$("vpct");if(box)box.hidden=false;
+ try{const url=await uploadWithProgress(file,id,f=>{if(bar)bar.style.width=Math.round(f*100)+"%";if(pct)pct.textContent=`Uploading ${Math.round(f*100)}% of ${mb.toFixed(1)} MB…`});
+  if(pct)pct.textContent="Saving…";put(await api("add_video",{name:id,file_url:url}));toast("Video added");redraw()}
+ catch(e){toast(e.message);if(box)box.hidden=true}}
+async function videoCaption(id,row,c){put(await api("update_video",{name:id,row,caption:c.trim()}));toast("Caption saved")}
+async function videoRemove(id,row){if(!confirm("Delete this video?"))return;put(await api("remove_video",{name:id,row}));redraw()}
 // ---- property page ------------------------------------------------------------------
 const DOC_TYPES=["EC (Encumbrance Certificate)","Patta / Chitta","FMB Sketch","Sale Deed","Parent Documents","Approval (DTCP / CMDA)","Tax Receipt","EB / Water"];
 const DOC_COL={Pending:"#8a948f",Received:"#2b6cb0",Verified:"#1f7a4d",Issue:"#c0392b"};
@@ -558,6 +580,7 @@ function drawDetail(id){const p=P(id);if(!p)return;const ph=p.photos||[];
  ${p.owner||p.phone?`<h2>Owner</h2><div class="card"><b>${esc(p.owner||"—")}</b>${p.phone?` <span class="mut">· ${esc(p.phone)}</span>`:""}</div>`:""}
  ${p.source||p.broker?`<h2>Source & broker</h2><div class="card">${p.source?`<div class="mut">Source: <b style="color:var(--ink)">${esc(p.source)}</b></div>`:""}${p.broker||p.bphone?`<div style="margin-top:6px"><b>${esc(p.broker||"Broker")}</b>${p.bphone?` <span class="mut">· ${esc(p.bphone)}</span>`:""}${p.comm?` <span class="mut">· commission ${esc(p.comm)}</span>`:""}</div><div class="row tight wrap" style="margin-top:8px;gap:8px">${telBtns(p.bphone)}</div>`:""}</div>`:""}
  ${p.notes?`<h2>Notes</h2><div class="card" style="white-space:pre-wrap">${esc(p.notes)}</div>`:""}
+ ${p._local?"":videoSection(p)}
  ${p._local?"":`<h2>Team</h2><section class="card"><label for="asg" style="margin-top:0">Assigned to</label><select id="asg" onchange="assignTo('${id}',this.value)"><option value="">— Not assigned —</option>${team.map(t=>`<option value="${esc(t.user)}" ${p.assign==t.user?"selected":""}>${esc(t.name)}${t.user==prof.user?" (you)":""}</option>`).join("")}</select></section>`}
  ${p._local?"":`<div class="sechead"><h2>Documents (${docsDone}/${DOC_TYPES.length})</h2></div><section class="card docs">${docRows(p)}</section>`}
  <div class="sechead"><h2>Price history</h2>${`<select id="rt2" class="mini" aria-label="Rating" onchange="deal('${id}')"><option value="">Rating —</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${p.rating==n?"selected":""}>${"★".repeat(n)}</option>`).join("")}</select>`}</div>

@@ -22,6 +22,9 @@ pipeline with visit notes, reminders, a map and side-by-side comparison.
 - Owner name and phone, with one-tap **Call** and **WhatsApp**
 - Source (direct owner, broker, online listing…) and broker name, phone and commission
 - Photo captions, and a full-screen photo viewer (swipe, double-tap to zoom)
+- **Videos** up to 20 MB each (record or pick on the phone), played right in the app, with captions.
+  Uploading needs a connection. Frappe's own upload limit (System Settings → Max File Size, 25 MB by
+  default) must be at least 20 MB, and on a production server so must nginx's `client_max_body_size`.
 - **Plot boundary:** tap the corners on the satellite map, or stand at each corner and add your GPS
   position. The measured area is shown in cent / sq.ft / acre / ground, and can be used as the area.
 - **Works offline:** save properties (with photos), visits, status changes, prices and reminders
@@ -242,6 +245,7 @@ different app id, so it installs alongside the old app; export the data before r
 | --- | --- |
 | **Property** | A site, named `P0001`, `P0002`, … Area, total and per-unit prices and the status history are maintained automatically. |
 | Property Photo | Child table: photos (private files) with captions |
+| Property Video | Child table: videos (private files, up to 20 MB) with captions |
 | Property Document | Child table: documents checklist (type, status, file, note) |
 | Property Price Log | Child table: price history (asking / offered / counter / negotiated / final) |
 | Property Visit | Child table: visit notes |
