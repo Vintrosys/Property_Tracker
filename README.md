@@ -4,7 +4,7 @@ A [Frappe](https://frappeframework.com) app for tracking property and land site 
 site's GPS location, photos, owner details and price on your phone, then move it through your buying
 pipeline with visit notes, reminders, a map and side-by-side comparison.
 
-- **Version:** 1.0.0
+- **Version:** 1.1.0
 - **Requires:** Frappe v16 (`>=16.0.0,<17.0.0`), Python 3.14
 - **License:** MIT
 
@@ -20,11 +20,24 @@ pipeline with visit notes, reminders, a map and side-by-side comparison.
 - Expected price as a total or per cent / sq.ft / acre / ground. Total, per-cent and per-sq.ft prices
   are calculated automatically.
 - Owner name and phone, with one-tap **Call** and **WhatsApp**
+- Source (direct owner, broker, online listing…) and broker name, phone and commission
+- Photo captions, and a full-screen photo viewer (swipe, double-tap to zoom)
+- **Plot boundary:** tap the corners on the satellite map, or stand at each corner and add your GPS
+  position. The measured area is shown in cent / sq.ft / acre / ground, and can be used as the area.
+- **Works offline:** save properties (with photos), visits, status changes, prices and reminders
+  without signal. They upload by themselves when you're back online.
 
 **Following up**
 - Status pipeline: New, Visited, Shortlisted, Follow-up, Negotiating, Revisit Required, Document
   Verification, Final Discussion, Purchased, Rejected, On Hold. Every change is logged with a note.
-- Visit log, negotiated price and a 1–5 rating
+- Visit log and a 1–5 rating
+- **Price history:** the asking price is recorded automatically each time it changes, and you can add
+  offers, counters, negotiated and final prices
+- **Documents checklist:** EC, Patta / Chitta, FMB sketch, sale deed, parent documents, approval, tax
+  receipt, EB / water and any others, each with a status (Pending / Received / Verified / Issue) and an
+  attached photo or PDF
+- **Team:** assign properties to agents, a **Mine** filter, and comments with **@mentions** (mentioned
+  people are notified)
 - Reminders with **alarms on the phone** (Android app), **push notifications** (browser / installed web
   app) and the Desk notification bell
 
@@ -35,7 +48,11 @@ pipeline with visit notes, reminders, a map and side-by-side comparison.
   Pin cards have **Directions** and Google **Street View** links, and **My location** shows where you are.
   No map API keys are needed.
 - Compare 2–5 properties side by side (differences are highlighted)
+- **Share card** (an image with photo, facts and price) and a printable **brochure** / PDF. Owner
+  details are never included.
 - Export to CSV (opens in Excel), back up as JSON and import a backup
+- **Reports in Desk:** a Property Tracker workspace with number cards, charts (by status, by type, added
+  per week, average price per cent by locality, site visits per week) and a weekly visits report
 
 **Everywhere**
 - Mobile-first design, light and dark themes, works on desktop too
@@ -98,16 +115,30 @@ handling of the Back button.
 1. On GitHub, open **Settings → Secrets and variables → Actions → Variables** and add `SITE_URL`
    (for example `https://erp.example.com`). Or enter the URL when you run the workflow.
 2. Open **Actions → Build APK → Run workflow**.
-3. Download the `property-tracker-apk` artifact, unzip it, copy `app-debug.apk` to the phone and
-   install it (allow installing from that source when asked).
+3. Download the `property-tracker-apk` artifact, unzip it, copy the `.apk` to the phone and install it
+   (allow installing from that source when asked).
+
+**Signed release builds (recommended).** Without a signing key the workflow builds a debug APK, and
+each debug build is signed with a different throwaway key, so a new build won't install over the old
+one (you'd have to uninstall first). Create a key once and add it as repository **secrets**:
+
+```bash
+keytool -genkeypair -v -keystore property-tracker.keystore -alias property-tracker \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 property-tracker.keystore   # paste the output into ANDROID_KEYSTORE_BASE64
+```
+
+Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
+(`property-tracker`) and `ANDROID_KEY_PASSWORD`. Every build then gets a higher version number and
+installs over the previous one. Keep the keystore file and passwords safe; you need the same key for
+every update.
 
 Good to know:
 - The site address is built into the APK, so rebuild it if the address changes. Changes to the
   tracker itself come from the server and don't need a new APK.
 - `SITE_URL` can be a local address such as `http://192.168.1.42:8000` while testing on the same
   Wi-Fi. GPS still works in the APK.
-- It's a debug build, which is fine for installing yourself. Publishing on Google Play needs a signed
-  release build.
+- With the signing secrets set, the APK is a signed release build, which is what Google Play needs.
 
 <details>
 <summary>Building the APK on your own computer</summary>
@@ -167,6 +198,26 @@ On each device that should alert you, open **Reminders → Turn on**, then **Sen
 - Each subscribed browser is listed under **Property Push Subscription**. Expired ones are removed
   automatically.
 
+## Working offline
+
+The app keeps a copy of your data on the phone. Without signal you can still open it, see everything,
+and add or edit properties (with photos), log visits, change status, add prices and ratings, and
+add or complete reminders. A banner shows how many changes are waiting. They upload in order as soon
+as the connection is back, and a property created offline gets its real `P…` number.
+
+- Opening the app with no connection at all needs the installed web app or a browser on `https://`
+  (or localhost), which keep the app itself on the phone. The Android APK needs a connection to
+  start, but keeps working if the signal drops later.
+- Documents, comments, assigning, the plot boundary and deleting need a connection. The app says so.
+- If the server rejects a queued change, it's listed under **Account → Changes that couldn't upload**,
+  with **Retry** and **Discard**.
+
+## Reports
+
+In Desk, open the **Property Tracker** workspace. It has shortcuts, number cards (Total, Shortlisted,
+Negotiating, Purchased, Open Reminders) and charts. The **Property Visits** report shows visits
+logged, properties visited and new properties per week.
+
 ## Maps
 
 Base maps come from free public services: OpenStreetMap, CARTO, Esri World Imagery and OpenTopoMap.
@@ -190,7 +241,9 @@ different app id, so it installs alongside the old app; export the data before r
 | DocType | Purpose |
 | --- | --- |
 | **Property** | A site, named `P0001`, `P0002`, … Area, total and per-unit prices and the status history are maintained automatically. |
-| Property Photo | Child table: photos (private files) |
+| Property Photo | Child table: photos (private files) with captions |
+| Property Document | Child table: documents checklist (type, status, file, note) |
+| Property Price Log | Child table: price history (asking / offered / counter / negotiated / final) |
 | Property Visit | Child table: visit notes |
 | Property Status Log | Child table: status changes |
 | **Property Reminder** | A user's follow-up reminder, optionally linked to a property |
@@ -210,6 +263,7 @@ Roles: **Property Manager** (created on install) and **System Manager**.
 | GPS says the page is opened over http:// | Use https, localhost, the APK, or the Chrome flag above |
 | Installing fails through an **ngrok** address | Fixed in the app (the manifest is fetched with cookies, past ngrok's warning page). Reload the page after updating. If Android still only offers a shortcut, use a tunnel without a warning page, for example `cloudflared tunnel --url http://localhost:8000`. Tunnel addresses change on restart, so the installed app stops working when they do. |
 | Chrome says "This app cannot be installed" | Installing needs `https://` (or localhost). On a local `http://` address use the APK, or the Chrome flag above, or **Create shortcut** for now. **Account → Install app** explains the options. |
+| A new APK won't install over the old one | It's a debug build. Uninstall the old one, or set up the signing secrets so updates install over it |
 | Changes don't show on the phone | Run `bench build --app property_tracker`, then reopen the app twice (the installed app updates on the next launch) |
 
 ## Development
@@ -219,8 +273,11 @@ property_tracker/
 ├── api.py                    # whitelisted API used by the page (data, saves, reminders, push)
 ├── webpush.py                # Web Push sender (RFC 8291 encryption, VAPID), no extra packages
 ├── pwa.py                    # serves the web-app manifest and service worker
+├── notify.py                 # Desk notification + push to a user (assignments)
+├── www/property-brochure.*   # printable brochure page
 ├── www/property-tracker.html # the /property-tracker page (controller: www/property_tracker.py)
-├── public/js|css/            # the tracker UI (plain JavaScript + Leaflet)
+├── public/js|css/            # the tracker UI (plain JavaScript)
+├── public/lib/leaflet/       # Leaflet 1.9.4 (served locally)
 └── property_tracker/doctype/
 mobile/                       # Capacitor Android wrapper (APK)
 .github/workflows/            # CI tests, linters, APK build
