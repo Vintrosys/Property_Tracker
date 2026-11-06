@@ -52,6 +52,7 @@ cd ~/frappe-bench
 bench get-app https://github.com/Vintrosys/Property_Tracker.git --branch main
 bench --site <your-site> install-app property_tracker
 bench --site <your-site> enable-scheduler      # needed for reminder notifications
+bench set-config -g scheduler_tick_interval 60 # check due reminders every minute (Frappe v16 default: 4 min)
 bench build --app property_tracker
 ```
 
@@ -155,7 +156,12 @@ On each device that should alert you, open **Reminders → Turn on**, then **Sen
 | **Browser / installed web app** | Web Push sent by the server when the reminder is due | `https://` (or localhost) and the scheduler |
 | **Desk** | Notification bell | The scheduler |
 
-- The server checks for due reminders **every minute**. Tapping a notification opens the property.
+- The reminder job is set to run every minute, but Frappe v16's scheduler only checks for due jobs
+  every **4 minutes** by default, so browser alerts can arrive up to about 4 minutes late. On your own
+  bench, run `bench set-config -g scheduler_tick_interval 60` and restart the bench for about 1-minute
+  delivery. (Alarms in the Android app don't depend on this; they ring at the exact time.)
+- Tapping a notification opens the property. A reminder that's ticked **done** before it's sent is not
+  sent.
 - Web Push is built in and needs no Firebase or other account. Its keys are generated automatically
   and kept in **Property Tracker Settings**.
 - Each subscribed browser is listed under **Property Push Subscription**. Expired ones are removed
@@ -199,7 +205,8 @@ Roles: **Property Manager** (created on install) and **System Manager**.
 | --- | --- |
 | `bench build` fails in another app (for example helpdesk's posthog import) | Build only this app: `bench build --app property_tracker` |
 | Frappe Cloud: "Could not find a compatible Frappe version" | Use the `main` branch on a Frappe v16 bench |
-| No reminder notifications | `bench --site <site> enable-scheduler`; turn alerts on under **Reminders** on that device; browsers need https |
+| No reminder notifications | `bench --site <site> enable-scheduler`; turn alerts on under **Reminders** on that device (then **Send test**); browsers need https. On Android, allow notifications for Chrome / the installed app in system settings. |
+| Notifications arrive minutes late | Frappe v16's scheduler checks every 4 minutes by default: `bench set-config -g scheduler_tick_interval 60`, then restart the bench |
 | GPS says the page is opened over http:// | Use https, localhost, the APK, or the Chrome flag above |
 | Installing fails through an **ngrok** address | Fixed in the app (the manifest is fetched with cookies, past ngrok's warning page). Reload the page after updating. If Android still only offers a shortcut, use a tunnel without a warning page, for example `cloudflared tunnel --url http://localhost:8000`. Tunnel addresses change on restart, so the installed app stops working when they do. |
 | Chrome says "This app cannot be installed" | Installing needs `https://` (or localhost). On a local `http://` address use the APK, or the Chrome flag above, or **Create shortcut** for now. **Account → Install app** explains the options. |

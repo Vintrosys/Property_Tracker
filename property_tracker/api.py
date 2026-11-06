@@ -361,8 +361,12 @@ def _device_name(user_agent):
 def get_push_config():
 	from property_tracker.webpush import get_vapid_keys
 
+	from frappe.utils.scheduler import get_scheduler_tick
+
 	public_key, _key = get_vapid_keys()
-	return {"public_key": public_key}
+	# Frappe's scheduler only checks jobs every `scheduler_tick_interval` seconds (4 minutes by
+	# default in v16), so browser alerts can arrive up to about that long after the due time.
+	return {"public_key": public_key, "delay_minutes": max(1, round(get_scheduler_tick() / 60))}
 
 
 @frappe.whitelist(methods=["POST"])

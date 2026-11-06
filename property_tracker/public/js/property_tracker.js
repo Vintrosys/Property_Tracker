@@ -241,12 +241,16 @@ async function alertsState(){ // "on" | "off" | "blocked" | "unsupported"
  if(Notification.permission=="denied")return "blocked";
  const reg=await swReg(),sub=reg&&await reg.pushManager.getSubscription();
  return sub&&Notification.permission=="granted"?"on":"off"}
-async function updateAlertsCard(){const el=$("alerts");if(!el)return;const s=await alertsState().catch(()=>"off"),n=!!LN();alertsOn=s=="on";if(!$("alerts"))return;
+let pushDelay=0;
+async function updateAlertsCard(){const el=$("alerts");if(!el)return;const s=await alertsState().catch(()=>"off"),n=!!LN();alertsOn=s=="on";
+ if(s=="on"&&!n&&!pushDelay){try{pushDelay=(await api("get_push_config")).delay_minutes||1}catch(e){pushDelay=1}}
+ if(!$("alerts"))return;
  const txt={on:n?"🔔 <b>Alarms are on.</b> Reminders ring on this phone at their due time, even when the app is closed.":"🔔 <b>Alerts are on for this device.</b> You'll get a notification when a reminder is due, even when the app is closed.",
   off:n?"🔕 Turn on alarms so reminders ring on this phone at their due time.":"🔕 Turn on alerts to get a notification on this device when a reminder is due.",
   blocked:n?"🚫 Notifications are blocked. Allow them in Android Settings → Apps → Property Tracker → Notifications.":"🚫 Notifications are blocked for this site. Allow them in the browser's site settings, then reload.",
   unsupported:esc(pushHelp())}[s];
- el.innerHTML=`<div>${txt}</div><div class="row wrap" style="margin-top:8px">${s=="off"||(s=="blocked"&&n)?`<button class="btn p" onclick="enableAlerts()">Turn on</button>`:""}${s=="on"?`<button class="btn" onclick="testAlert()">Send test</button>${n?"":`<button class="btn" onclick="disableAlerts()">Turn off</button>`}`:""}</div>`}
+ const late=s=="on"&&!n&&pushDelay>1?`<div class="mut" style="margin-top:6px">${ic("info",13)} Alerts arrive within about ${pushDelay} minutes of the due time (server setting <code>scheduler_tick_interval</code>).</div>`:"";
+ el.innerHTML=`<div>${txt}</div>${late}<div class="row wrap" style="margin-top:8px">${s=="off"||(s=="blocked"&&n)?`<button class="btn p" onclick="enableAlerts()">Turn on</button>`:""}${s=="on"?`<button class="btn" onclick="testAlert()">Send test</button>${n?"":`<button class="btn" onclick="disableAlerts()">Turn off</button>`}`:""}</div>`}
 async function enableAlerts(){try{const N=LN();
  if(N){let p=await N.checkPermissions();if(p.display!="granted")p=await N.requestPermissions();
   if(p.display!="granted")toast("Notifications are blocked. Allow them for Property Tracker in Android settings.");else{await syncAlarms();toast("Reminder alarms are on")}}
