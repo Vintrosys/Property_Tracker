@@ -97,7 +97,7 @@ const gm=p=>`https://www.google.com/maps?q=${p.lat},${p.lng}`;
 const now=()=>new Date().toISOString();const dt=s=>s?new Date(s).toLocaleString([],{dateStyle:"medium",timeStyle:"short"}):"—";
 const same=(s,d)=>s&&new Date(s).toDateString()==d.toDateString();
 // ---- UI helpers ------------------------------------------------------------------
-const I={check:"M20 6L9 17l-5-5",home:"M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",list:"M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
+const I={video:"M23 7l-7 5 7 5zM1 5h15v14H1z",check:"M20 6L9 17l-5-5",home:"M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",list:"M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
  map:"M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",bell:"M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
  user:"M20 21a8 8 0 1 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",plus:"M12 5v14M5 12h14",search:"M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
  pin:"M12 22s7-7.6 7-13a7 7 0 1 0-14 0c0 5.4 7 13 7 13zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",go:"M3 11l19-9-9 19-2-8-8-2z",
@@ -398,7 +398,7 @@ async function syncAlarms(){const N=LN();if(!N)return;try{
 // After loading: keep this browser's push registration current on the server, or the phone's alarms in sync.
 async function refreshAlerts(){try{if(LN())return syncAlarms();if(alertsRefreshed||!pushSupported()||Notification.permission!="granted")return;alertsRefreshed=true;
  const reg=await swReg(),sub=reg&&await reg.pushManager.getSubscription();alertsOn=!!sub;
- if(sub)await api("save_push_subscription",{subscription:sub.toJSON(),user_agent:navigator.userAgent})}catch(e){}}
+ if(sub)await api("save_push_subscription",{subscription:sub.toJSON(),user_agent:navigator.userAgent},true)}catch(e){}}
 // Tapping a notification opens the reminder's property (or the Reminders screen).
 function openHash(h){if(!h)return;if(h=="#rem"){if(st().s)history.go(-st().d);setTimeout(()=>nav("rem"),50)}else route(h)}
 try{const N=LN();if(N)N.addListener("localNotificationActionPerformed",a=>{const u=a&&a.notification&&a.notification.extra&&a.notification.extra.url;if(u)openHash(new URL(u,location.origin).hash)})}catch(e){}
@@ -504,7 +504,7 @@ function propForm(p){p=p||{};const V=k=>esc(p[k]??"");
  <label for="addr">Address / Landmark</label><textarea id="addr" rows="2" placeholder="Door no., street, near temple / school / bus stop…">${V("addr")}</textarea>
  <div class="row"><div><label for="loc">Locality / village</label><input id="loc" value="${V("locality")}"></div><div><label for="dist">District</label><input id="dist" value="${V("district")}"></div></div></section>
  <section class="card fs"><h3>${ic("home",18)} Basics</h3><label for="stitle">Site title / name</label><input id="stitle" value="${V("name")}" placeholder="e.g. Anna Nagar corner plot"><label for="type">Property type</label><select id="type">${opts(TYPES,p.type)}</select></section>
- <section class="card fs"><h3>${ic("camera",18)} Photos</h3><div id="pv" class="ph2"></div></section>
+ <section class="card fs"><h3>${ic("camera",18)} Photos & videos</h3><div id="pv" class="ph2"></div><div class="mut" style="margin-top:6px">Videos up to ${MAX_VIDEO_MB} MB each. They upload after you save (needs a connection).</div></section>
  <section class="card fs"><h3>${ic("ruler",18)} Size</h3>
  <div class="row"><div><label for="len">Length (ft)</label><input id="len" type="number" step="any" inputmode="decimal" value="${V("len")}" oninput="sizeHint()"></div><div><label for="wid">Width (ft)</label><input id="wid" type="number" step="any" inputmode="decimal" value="${V("wid")}" oninput="sizeHint()"></div><div><label for="road">Road width (ft)</label><input id="road" type="number" step="any" inputmode="decimal" value="${V("road")}"></div></div>
  <div class="row"><div><label for="area">Area</label><input id="area" type="number" step="any" inputmode="decimal" value="${V("area")}" placeholder="Auto from L × W" oninput="sizeHint()"></div><div><label for="unit">Unit</label><select id="unit" onchange="sizeHint()">${opts(Object.keys(U),p.unit||"Sq.ft")}</select></div></div>
@@ -519,20 +519,37 @@ function formVals(){const v=i=>(($(i)||{}).value||"").trim();return {name:v("sti
 function sizeHint(){const e=$("szh");if(!e)return;const f=formVals(),x={...f,len:+f.len||0,wid:+f.wid||0,price:+f.price||0};
  const auto=!(+f.area)&&x.len&&x.wid;x.area=+f.area||(auto?x.len*x.wid/(U[f.unit]||1):0);const s=sqft(x);
  e.innerHTML=s?`${auto?`${fmt(x.len)} × ${fmt(x.wid)} ft = `:""}<b>${fmt(Math.round(s))} sq.ft</b> · ${fmt(s/435.6)} cent${s>=43560?` · ${fmt(s/43560)} acre`:""}${total(x)?` · total <b>${inr(total(x))}</b>`:""}`:""}
-function drawPh(){const e=$("pv");if(!e)return;e.innerHTML=draft.photos.map((x,i)=>`<div class="phw"><img src="${esc(x.d)}" alt=""><button type="button" class="phx" onclick="rmPh(${i})" aria-label="Remove photo">×</button><input class="cap" value="${esc(x.c||"")}" placeholder="Caption" aria-label="Photo caption" oninput="draft.photos[${i}].c=this.value"></div>`).join("")+`<label class="addph">${ic("camera",24)}<span>Add photo</span><input id="ph" type="file" accept="image/*" capture="environment" multiple hidden onchange="photos(this)"></label>`}
+function drawPh(){const e=$("pv");if(!e)return;e.innerHTML=draft.photos.map((x,i)=>`<div class="phw"><img src="${esc(x.d)}" alt=""><button type="button" class="phx" onclick="rmPh(${i})" aria-label="Remove photo">×</button><input class="cap" value="${esc(x.c||"")}" placeholder="Caption" aria-label="Photo caption" oninput="draft.photos[${i}].c=this.value"></div>`).join("")+(draft.oldVids||[]).map(v=>`<div class="phw"><div class="vtile">${ic("video",26)}<small>${v.mb?v.mb+" MB":"video"}</small></div><div class="cap ro" title="Manage on the property page">${esc(v.c||"Saved video")}</div></div>`).join("")
+ +(draft.vids||[]).map((v,i)=>`<div class="phw"><div class="vtile new">${ic("video",26)}<small>${(v.file.size/1048576).toFixed(1)} MB</small></div><button type="button" class="phx" onclick="rmVid(${i})" aria-label="Remove video">×</button><input class="cap" value="${esc(v.c)}" placeholder="Caption" aria-label="Video caption" oninput="draft.vids[${i}].c=this.value"></div>`).join("")
+ +`<label class="addph">${ic("camera",24)}<span>Add photo</span><input id="ph" type="file" accept="image/*" capture="environment" multiple hidden onchange="photos(this)"></label>`
+ +`<label class="addph">${ic("video",24)}<span>Add video</span><input id="vf" type="file" accept="video/*" multiple hidden onchange="pickVideos(this)"></label>`}
+// videos chosen in the form wait here and upload once the property is saved
+function pickVideos(input){const fs=[...input.files];input.value="";draft.vids=draft.vids||[];
+ for(const f of fs){if(!/^video\//.test(f.type)&&!/\.(mp4|mov|webm|3gpp?|m4v|mkv|avi)$/i.test(f.name)){toast(`${f.name} is not a video`);continue}
+  const mb=f.size/1048576;if(mb>MAX_VIDEO_MB){alert(`${f.name} is ${mb.toFixed(1)} MB. The limit is ${MAX_VIDEO_MB} MB.\n\nRecord a shorter clip, use 720p, or trim it first.`);continue}
+  draft.vids.push({file:f,c:""})}drawPh()}
+function rmVid(i){draft.vids.splice(i,1);drawPh()}
+async function uploadDraftVideos(id,vids){if(!vids||!vids.length)return;
+ if(isTmp(id)||isOffline){toast("Saved without the videos: videos need a connection. Add them from the property page when you're online.");return}
+ const e=$("net"),show=t=>{if(e){e.hidden=false;e.className="net sync";e.innerHTML=`${ic("upload",15)} ${t}`}};let ok=0;
+ for(let i=0;i<vids.length;i++){const v=vids[i],mb=(v.file.size/1048576).toFixed(1);
+  try{const url=await uploadWithProgress(v.file,id,f=>show(`Uploading video ${i+1} of ${vids.length} · ${Math.round(f*100)}% of ${mb} MB`));show(`Saving video ${i+1} of ${vids.length}…`);
+   put(await api("add_video",{name:id,file_url:url,caption:v.c.trim()},true));ok++}
+  catch(err){toast(`Video ${i+1} not uploaded: ${err.message}`)}}
+ netBanner();if(ok)toast(`${ok} video${ok>1?"s":""} uploaded`);const s=st().s;if(s&&s.id==id&&s.t=="d")redraw()}
 function rmPh(i){draft.photos.splice(i,1);drawPh()}
 function edit(){openS({t:"a"})}
-function drawAdd(){draft={photos:[],lat:"",lng:""};
+function drawAdd(){draft={photos:[],lat:"",lng:"",vids:[]};
  sheet(sheetHead("Add property","GPS is captured automatically")+propForm()+`<div class="savebar"><button class="btn" onclick="closeS()">Cancel</button><button class="btn p" onclick="saveP()">Save property</button></div>`);drawPh();sizeHint();pickMap();gps()}
 function photos(i){[...i.files].forEach(f=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const s=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);draft.photos.push({d:c.toDataURL("image/jpeg",.6),at:f.lastModified?new Date(f.lastModified).toISOString():now()});URL.revokeObjectURL(u);drawPh()};im.src=u})}
 function llOk(){const f=formVals();if(!f.lat&&!f.lng)return true;
  if(hasLoc(f)&&f.lsrc=="GPS"&&+f.acc>OK&&!confirm(`The location is only accurate to ${accTxt(+f.acc)}, so the pin may be far from the real site.\n\nSave anyway? (Cancel to try GPS again or place the pin on the map.)`))return false;
  if((+f.lat==0&&+f.lng==0)||hasLoc(f))return true;toast("Location is not valid: latitude must be −90…90 and longitude −180…180. Capture GPS or move the pin.");return false}
-async function saveP(){if(busy)return;stopGps();if(!llOk())return;put(await write("save_property",{data:{...formVals(),status:"Visited"}}));if(!outbox.length)toast("Property saved");closeS()}
+async function saveP(){if(busy)return;stopGps();if(!llOk())return;const vids=draft.vids||[];const r=put(await write("save_property",{data:{...formVals(),status:"Visited"}}));if(!outbox.length&&!vids.length)toast("Property saved");closeS();uploadDraftVideos(r.id,vids)}
 function editP(id){if(P(id))openS({t:"e",id})}
-function drawEdit(id){const p=P(id);if(!p)return;draft={photos:[...p.photos],lat:p.lat,lng:p.lng};
+function drawEdit(id){const p=P(id);if(!p)return;draft={photos:[...p.photos],lat:p.lat,lng:p.lng,vids:[],oldVids:p.videos||[]};
  sheet(sheetHead(`Edit ${p.id}`,esc(p.name||""))+propForm(p)+`<div class="savebar"><button class="btn" onclick="history.back()">Cancel</button><button class="btn p" onclick="saveEdit('${id}')">Save changes</button></div>`);drawPh();sizeHint();pickMap();if(!hasLoc(p))gps();else{const e=$("gps");if(e)e.innerHTML=`${ic("pin",16)} Saved location${p.acc?` · ${accTxt(+p.acc)}`:""}${p.lsrc?` · ${esc(p.lsrc)}`:""}. Tap <b>Capture GPS here</b> to replace it.`}}
-async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;put(await write("save_property",{name:id,data:formVals()}));if(!outbox.length)toast("Changes saved");history.back()}
+async function saveEdit(id){if(busy||!P(id))return;stopGps();if(!llOk())return;const vids=draft.vids||[];put(await write("save_property",{name:id,data:formVals()}));if(!outbox.length&&!vids.length)toast("Changes saved");history.back();uploadDraftVideos(id,vids)}
 function detail(id){if(P(id))openS({t:"d",id})}
 // ---- videos (up to 20 MB each; online only) ----------------------------------------------
 const MAX_VIDEO_MB=20;
@@ -623,7 +640,7 @@ async function docRemove(id,row){if(!confirm("Remove this document from the chec
 let mentionSel=new Set();
 function cleanComment(html){const d=new DOMParser().parseFromString(`<div>${html||""}</div>`,"text/html"),out=[];
  const walk=n=>{for(const c of n.childNodes){if(c.nodeType==3)out.push(esc(c.textContent));else if(c.nodeType==1){if(c.classList.contains("mention"))out.push(`<b class="mention">${esc(c.textContent)}</b>`);else if(c.tagName=="BR")out.push("<br>");else{if(/^(P|DIV)$/.test(c.tagName)&&out.length)out.push("<br>");walk(c)}}}};walk(d.body);return out.join("")}
-async function loadComments(id){const box=$("cmts");if(!box)return;let cs=[];try{cs=await api("get_comments",{name:id})}catch(e){box.innerHTML=`<div class="mut">Comments are not available offline.</div>`;return}
+async function loadComments(id){const box=$("cmts");if(!box)return;let cs=[];try{cs=await api("get_comments",{name:id},true)}catch(e){box.innerHTML=`<div class="mut">Comments are not available offline.</div>`;return}
  if(!$("cmts")||st().s?.id!=id)return;mentionSel=new Set();
  box.innerHTML=(cs.length?`<ul class="cmts">${cs.map(c=>`<li><div class="chead"><b>${esc(c.who)}</b><time>${dt(c.at)}</time>${c.by==prof.user?`<button class="iconbtn sm" onclick="delComment('${id}','${c.k}')" aria-label="Delete comment">${ic("trash",14)}</button>`:""}</div><div>${cleanComment(c.html)}</div></li>`).join("")}</ul>`:`<div class="mut">No comments yet. Type @ to mention someone.</div>`)
   +`<div class="cbox"><textarea id="ctext" rows="2" placeholder="Write a comment… type @ to mention" oninput="mentionAuto(this)"></textarea><div id="mlist" class="mlist" hidden></div><button class="btn p" style="margin-top:8px" onclick="postComment('${id}')">Post comment</button></div>`}
